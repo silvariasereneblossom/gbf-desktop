@@ -7,7 +7,8 @@
   "scripts": {
     "start": "electron .",
     "icons": "node src/icon.js",
-    "dist": "node src/icon.js && electron-builder --win"
+    "dist": "node src/icon.js && electron-builder --win",
+    "release": "node src/icon.js && electron-builder --win --publish always"
   },
   "author": "",
   "license": "MIT",
@@ -18,7 +19,9 @@
   "build": {
     "appId": "com.local.gbfdesktop",
     "productName": "Granblue Fantasy Desktop",
+    "artifactName": "GranblueFantasyDesktop-Setup-${version}.${ext}",
     "files": ["src/**/*", "assets/**/*"],
-    "win": { "target": "nsis", "icon": "assets/icon.ico" }
+    "win": { "target": "nsis", "icon": "assets/icon.ico" },
+    "publish": [{ "provider": "github", "owner": "silvariasereneblossom", "repo": "gbf-desktop" }]
   }
 }

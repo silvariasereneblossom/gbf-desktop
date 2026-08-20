@@ -1,0 +1,30 @@
+name: Build & release installer
+
+# Push a version tag (e.g. `git tag v0.1.1 && git push origin v0.1.1`) to build the
+# Windows installer on a clean runner and attach it to a GitHub Release for that tag.
+# Can also be run on demand from the Actions tab (workflow_dispatch).
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed to create the release and upload the .exe
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # electron-builder reads GH_TOKEN and publishes to the GitHub Release for the current tag.
+      - run: npm run release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
