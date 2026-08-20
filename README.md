@@ -5,9 +5,17 @@ lives in the system tray, keeps you on top of reset / dailies, and shows
 [granblue.team](https://granblue.team) parties next to the game.
 
 > **Disclaimer:** Unofficial fan project, not affiliated with or endorsed by Cygames or DeNA.
-> Some opt-in features (battle auto-refresh, auto-equip, SkyLeap UA) are community-documented
-> grey areas under the game's Terms of Service — they ship **off by default** with warnings,
-> and using them is your own decision and risk. No feature plays the game for you.
+> Nothing here plays the game for you. Risk-wise the features fall into three tiers —
+> unlike Viramate-style extensions, almost everything is **external to the game page**:
+>
+> | Tier | Features | Why |
+> |---|---|---|
+> | **External utilities** (no meaningful risk) | Tray/reminders/checklist, team viewer & assisted import (read-only [hensei-api](https://github.com/jedmund/hensei-api) data + navigation), ping meter, multiwindow, mouse bindings, proxy/Mudfish tools, multi-account | Live entirely outside the game; server-side indistinguishable from a browser plus side tools |
+> | **Compatibility / hygiene** | Login shims (FedCM hide, cookie unpartitioning), tracker blocking | Adjust *browser* behavior so login and loading work as in Chrome; zero gameplay effect. The community optimization guide treats ad blocking as safe |
+> | **Mildly risky** (opt-in, off by default) | Battle auto-refresh, SkyLeap UA | Auto-refresh is literally an automated F5 after *your* action — but machine-timed. SkyLeap UA misrepresents the client (community-standard for years) |
+> | **Risky** (opt-in, explicit consent gate) | Party auto-equip | The one feature that drives the game's own UI via injected script — the same category Cygames has acted against historically |
+>
+> Using the opt-in tiers is your own decision and risk.
 
 ## Run
 
