@@ -1,0 +1,24 @@
+{
+  "name": "gbf-desktop",
+  "productName": "Granblue Fantasy Desktop",
+  "version": "0.1.0",
+  "description": "Desktop wrapper for Granblue Fantasy with tray, reset/daily reminders and granblue.team import",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "icons": "node src/icon.js",
+    "dist": "node src/icon.js && electron-builder --win"
+  },
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "com.local.gbfdesktop",
+    "productName": "Granblue Fantasy Desktop",
+    "files": ["src/**/*", "assets/**/*"],
+    "win": { "target": "nsis", "icon": "assets/icon.ico" }
+  }
+}

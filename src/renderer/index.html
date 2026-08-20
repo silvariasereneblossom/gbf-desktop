@@ -1,0 +1,160 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https://prd-game-a-granbluefantasy.akamaized.net https://*.granbluefantasy.jp data:; style-src 'self' 'unsafe-inline'; connect-src 'none';">
+<title>GBF Desktop</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">GBF<span>desktop</span></div>
+  <div class="resetbox" id="pingbox" title="Latency to game.granbluefantasy.jp through the game session (proxy included)"><span class="lbl">ping</span><b id="ping-ms">—</b></div>
+  <div class="resetbox" title="Time until 05:00 JST"><span class="lbl">reset</span><b id="reset-timer">--:--</b></div>
+  <div class="winbtns">
+    <button id="btn-newwin" title="New game window (same login) — for multiwindow flow/guarding">⧉</button>
+    <button id="btn-ar" title="Auto-refresh on attack (toggle)">⟳A</button>
+    <button id="btn-reload" title="Reload game (F5)">⟳</button>
+    <button id="btn-zoom-out" title="Zoom out (Ctrl -)">−</button>
+    <button id="btn-zoom-in" title="Zoom in (Ctrl +)">+</button>
+    <button id="btn-hide" title="Hide sidebar (Ctrl B)">⇤</button>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button data-tab="dailies" class="active">Dailies</button>
+  <button data-tab="teams">Teams</button>
+  <button data-tab="settings">Settings</button>
+</nav>
+
+<main>
+  <!-- DAILIES -->
+  <section id="tab-dailies" class="tab active">
+    <div class="quicknav">
+      <button data-go="#mypage">Home</button>
+      <button data-go="#quest">Quests</button>
+      <button data-go="#party/index/0/npc/0">Party</button>
+      <button data-go="#gacha">Draw</button>
+      <button data-go="#coopraid">Co-op</button>
+      <button data-go="#event">Event</button>
+      <button data-go="#arcarum2">Arcarum</button>
+      <button data-go="#shop">Shop</button>
+      <button data-go="#quest/assist">Raids</button>
+      <button data-go="#quest/assist/unclaimed/0/0">Pending</button>
+      <button data-go="#quest/assist_entry_id/0">Raid ID</button>
+    </div>
+    <div class="sect-h"><span>Daily checklist</span><small id="dailies-left"></small></div>
+    <ul id="dailies" class="dailies"></ul>
+    <div class="addrow">
+      <input id="new-daily-label" placeholder="Add a daily… (label)">
+      <input id="new-daily-hash" placeholder="#hash (optional)" class="narrow">
+      <button id="add-daily">+</button>
+    </div>
+    <p class="hint">Checklist auto-clears at 05:00 JST. Click a row's → to jump to that screen in-game. Drag to reorder, × to remove.</p>
+  </section>
+
+  <!-- TEAMS -->
+  <section id="tab-teams" class="tab">
+    <div class="addrow">
+      <input id="team-input" placeholder="granblue.team URL or shortcode (e.g. c6WX3u)">
+      <button id="team-import">Import</button>
+    </div>
+    <div class="row gap">
+      <button id="team-explore" class="ghost">Browse explore ▾</button>
+      <select id="explore-element" class="ghost">
+        <option value="">Any element</option>
+        <option value="1">Wind</option><option value="2">Fire</option><option value="3">Water</option>
+        <option value="4">Earth</option><option value="5">Dark</option><option value="6">Light</option>
+      </select>
+    </div>
+    <div id="explore-list" class="explore hidden"></div>
+    <div id="team-status" class="status"></div>
+    <div id="team-view"></div>
+    <div id="import-panel" class="hidden">
+      <div class="sect-h"><span>Into game</span><small id="deck-info"></small></div>
+      <p class="hint" id="deck-hint">Open the party set you want to build in-game (Party → choose the set). The wrapper reads the deck number from the game's URL.</p>
+      <div id="slot-list" class="slots"></div>
+      <div class="row gap"><button id="slots-reset" class="ghost">Reset checklist</button><button id="slots-auto-all" class="hidden">⚡ Auto-equip all remaining</button></div>
+      <div id="auto-status" class="status"></div>
+      <details id="auto-equip-box">
+        <summary>Auto-equip (UI automation) — read before enabling</summary>
+        <div class="danger">
+          <b>⚠ This is automation of the game client.</b> It opens the same picker screens you would, finds your owned copy in the list the game loaded, and presses the item and the Equip button for you, with human-like pauses. It never calls the game's API directly — but it is still a tool operating the game on your behalf, which Cygames' Terms of Service prohibit. Accounts have been banned for client-side tools before. Nobody outside Cygames knows where their line is. <b>Use at your own risk; if in doubt, use the Open buttons above and tap Equip yourself.</b><br><br>
+          It stops on the first slot it can't resolve (not owned, filter hiding it, game dialog) and tells you. Keep the game view visible while it runs and don't click in it.
+          <label class="opt"><input type="checkbox" id="auto-accept"> I understand and accept the risk — show Auto buttons</label>
+        </div>
+      </details>
+    </div>
+    <div class="sect-h"><span>Saved teams</span></div>
+    <ul id="saved-teams" class="saved"></ul>
+    <p class="hint">Teams are shown as a reference next to the game. Build them in-game from Party → Edit; the app does not touch your account.</p>
+  </section>
+
+  <!-- SETTINGS -->
+  <section id="tab-settings" class="tab">
+    <label class="opt"><input type="checkbox" id="opt-reset"> Notify at daily reset (05:00 JST)</label>
+    <label class="opt">Warn <input type="number" id="opt-lead" min="0" max="720" class="num"> min before reset if dailies unfinished</label>
+    <label class="opt"><input type="checkbox" id="opt-halfelixir"> Hourly AP / half-elixir nudge</label>
+    <label class="opt">Extra reminder times (local, comma separated HH:MM)<br><input id="opt-custom" placeholder="12:00, 21:30"></label>
+    <hr>
+    <label class="opt"><input type="checkbox" id="opt-tray"> Close button hides to tray (keep running)</label>
+    <label class="opt"><input type="checkbox" id="opt-login"> Launch at Windows login</label>
+    <label class="opt">Sidebar width <input type="number" id="opt-width" min="260" max="600" class="num"> px</label>
+    <hr>
+    <div class="sect-h"><span>Network</span></div>
+    <label class="opt"><input type="checkbox" id="opt-trackers"> Block ad/analytics trackers (faster raid joins)</label>
+    <label class="opt"><input type="checkbox" id="px-enabled"> Route game through a proxy</label>
+    <label class="opt">Proxy <input id="px-rules" placeholder="socks5://127.0.0.1:8282"></label>
+    <p class="hint">Only the game session is proxied — the rest of your PC is untouched. Mudfish note: its normal (TUN) mode already captures the wrapper's game traffic automatically, no proxy needed here; use this only for Mudfish's SOCKS5 mode or another local proxy/VPN gateway. The ping readout above measures through whatever path is active.</p>
+    <div class="sect-h"><span>Mudfish</span><small id="mf-status">checking…</small></div>
+    <div class="row gap">
+      <button id="mf-open">Open Mudfish console</button>
+      <button id="mf-launch" class="ghost">Launch Mudfish</button>
+      <label style="margin-left:auto">port <input type="number" id="mf-port" min="1" max="65535" class="num"></label>
+    </div>
+    <div class="row gap">
+      <input id="mf-user" placeholder="Mudfish email">
+      <input id="mf-pass" type="password" placeholder="password">
+      <button id="mf-save">Save</button>
+    </div>
+    <p class="hint" id="mf-creds-hint"></p>
+    <p class="hint">Mudfish's client <i>is</i> a local web dashboard — this opens it in a wrapper window (node picking, GBF item, Advanced Mode paths, all of it). Launch starts Mudfish if it isn't running (expect a Windows admin prompt — it installs a network driver) and pops the console here once it's up. Saved credentials are encrypted with Windows DPAPI, used only to sign into the local console at 127.0.0.1, and auto-filled when its sign-in page appears; save with both fields empty to clear. Watch the ping readout to compare paths.</p>
+    <hr>
+    <div class="sect-h"><span>SkyLeap mode</span></div>
+    <label class="opt"><input type="checkbox" id="sl-enabled"> Use SkyLeap user agent (reloads the game)</label>
+    <label class="opt">Game width <input type="number" id="sl-width" min="0" max="2000" step="1" class="num"> px <small>(0 = fill; SkyLeap layout scales to width — ~642 is the community favourite)</small></label>
+    <p class="hint">Community trick (documented on gbf.wiki): the game treats you as SkyLeap — you earn SkyLeap points on desktop, the game's own sidebar disappears, and pages reportedly load a bit faster. Caveats: it redraws the whole game and can lag on some setups (just toggle it back off); logins always use the normal Chrome identity, so signing in keeps working. Same grey-area status as auto-refresh: unofficial, at your own discretion.</p>
+    <hr>
+    <div class="sect-h"><span>Battle: auto-refresh</span></div>
+    <label class="opt"><input type="checkbox" id="ar-attack"> Refresh when the <b>attack</b> result arrives</label>
+    <label class="opt"><input type="checkbox" id="ar-summon"> Refresh after <b>summon</b></label>
+    <label class="opt"><input type="checkbox" id="ar-skill"> Refresh after <b>skill</b></label>
+    <label class="opt">Delay <input type="number" id="ar-delay" min="0" max="3000" step="50" class="num"> ms</label>
+    <p class="hint">Reloads the game the instant the server has applied your action — same as pressing F5 after attacking, just automatic. It does not play for you. ⚠ Refresh tools are a grey area under Cygames' terms; use at your own discretion. It also interrupts Full Auto, so turn it off for FA runs (the ⟳A button in the top bar toggles attack-refresh).</p>
+    <hr>
+    <div class="sect-h"><span>Accounts</span></div>
+    <div class="row gap">
+      <select id="acc-select"></select>
+      <button id="acc-add" class="ghost" title="Add another account (separate login)">+ Add</button>
+    </div>
+    <div class="row gap">
+      <input id="acc-name" placeholder="rename selected…">
+      <button id="acc-rename" class="ghost">Rename</button>
+      <button id="acc-remove" class="ghost" title="Remove selected (not the active one); wipes its login">×</button>
+    </div>
+    <p class="hint">Each account is a fully separate login (own cookie jar). Picking one switches the game immediately — log in via the game's login screen the first time. Extra game windows (⧉) open as whichever account is active.</p>
+    <div class="sect-h"><span>Session</span></div>
+    <div class="row gap">
+      <button id="btn-clear-session">Log out / clear game cookies</button>
+      <button id="btn-open-ext" class="ghost">Open current page in browser</button>
+    </div>
+    <div class="row gap"><button id="btn-data-folder" class="ghost">Open data folder (settings, nav.log)</button></div>
+    <p class="hint">Login popups (Mobage, Google, Yahoo, DMM…) open inside the app and share the game's cookie jar. If login loops, clear cookies and try again.</p>
+    <hr>
+    <p class="hint">Shortcuts: F5 reload · Ctrl+B sidebar · Ctrl +/−/0 zoom · Ctrl+Shift+G show window from anywhere.</p>
+    <p class="hint">Game data & team art © Cygames. Team data from <a href="#" data-ext="https://granblue.team">granblue.team</a> (hensei-api).</p>
+  </section>
+</main>
+<script src="renderer.js"></script>
+</body>
+</html>
