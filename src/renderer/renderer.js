@@ -236,6 +236,7 @@ function renderAutoRefresh() {
   const a = settings.autoRefresh || {};
   $('#ar-attack').checked = !!a.attack; $('#ar-summon').checked = !!a.summon; $('#ar-skill').checked = !!a.skill;
   $('#ar-delay').value = a.delayMs || 0;
+  $('#ar-jitter').value = a.jitterMs || 0;
   $('#btn-ar').classList.toggle('on', !!a.attack);
   $('#btn-ar').title = `Auto-refresh on attack: ${a.attack ? 'ON' : 'off'} (click to toggle)`;
 }
@@ -248,6 +249,7 @@ $('#ar-attack').onchange = e => saveAutoRefresh({ attack: e.target.checked });
 $('#ar-summon').onchange = e => saveAutoRefresh({ summon: e.target.checked });
 $('#ar-skill').onchange = e => saveAutoRefresh({ skill: e.target.checked });
 $('#ar-delay').onchange = e => saveAutoRefresh({ delayMs: Math.max(0, Math.min(3000, +e.target.value || 0)) });
+$('#ar-jitter').onchange = e => saveAutoRefresh({ jitterMs: Math.max(0, Math.min(3000, +e.target.value || 0)) });
 
 $('#btn-newwin').onclick = () => gbf.newGameWindow();
 gbf.on('ping', (ms) => {

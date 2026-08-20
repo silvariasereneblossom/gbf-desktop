@@ -585,6 +585,17 @@ const BATTLE_ENDPOINTS = {
 };
 let lastAutoRefresh = 0;
 const gameContentsIds = new Set(); // main game view + any extra game windows
+
+// Delay before an auto-refresh fires: a fixed floor plus a random, human-shaped spread.
+// Human reaction times cluster rather than spread flat, so we approximate a skewed/bell shape by
+// averaging three uniforms (central-limit → roughly Gaussian) instead of a single flat random.
+function refreshDelay(ar) {
+  const base = Math.max(0, Math.min(3000, ar.delayMs | 0));
+  const spread = Math.max(0, Math.min(3000, ar.jitterMs | 0));
+  if (!spread) return base;
+  const r = (Math.random() + Math.random() + Math.random()) / 3; // 0..1, peaked at 0.5
+  return Math.min(5000, base + Math.round(r * spread));
+}
 function installAutoRefresh(ses) {
   const { webContents } = require('electron');
   ses.webRequest.onCompleted({ urls: ['https://game.granbluefantasy.jp/rest/*'] }, (details) => {
@@ -596,11 +607,12 @@ function installAutoRefresh(ses) {
     const now = Date.now();
     if (now - lastAutoRefresh < 1500) return; // one reload per action
     lastAutoRefresh = now;
-    navLog('auto-refresh', kind);
+    const delay = refreshDelay(ar);
+    navLog('auto-refresh', `${kind} +${delay}ms`);
     setTimeout(() => {
       const wc = webContents.fromId(details.webContentsId);
       if (wc && !wc.isDestroyed() && /#raid/.test(wc.getURL())) wc.reload();
-    }, Math.max(0, Math.min(3000, ar.delayMs | 0)));
+    }, delay);
   });
 }
 

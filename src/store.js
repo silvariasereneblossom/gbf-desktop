@@ -45,7 +45,8 @@ const DEFAULTS = {
     attack: false,
     summon: false,
     skill: false,
-    delayMs: 0
+    delayMs: 0,            // fixed floor before firing (ms)
+    jitterMs: 0            // + a random human-shaped amount on top (0 = machine-exact)
   },
   dailiesResetStamp: null, // YYYY-MM-DD (JST) of last auto-uncheck
   savedTeams: []           // imported granblue.team parties

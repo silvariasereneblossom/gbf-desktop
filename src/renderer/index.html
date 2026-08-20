@@ -129,8 +129,9 @@
     <label class="opt"><input type="checkbox" id="ar-attack"> Refresh when the <b>attack</b> result arrives</label>
     <label class="opt"><input type="checkbox" id="ar-summon"> Refresh after <b>summon</b></label>
     <label class="opt"><input type="checkbox" id="ar-skill"> Refresh after <b>skill</b></label>
-    <label class="opt">Delay <input type="number" id="ar-delay" min="0" max="3000" step="50" class="num"> ms</label>
-    <p class="hint">Reloads the game the instant the server has applied your action — same as pressing F5 after attacking, just automatic. It does not play for you. ⚠ Refresh tools are a grey area under Cygames' terms; use at your own discretion. It also interrupts Full Auto, so turn it off for FA runs (the ⟳A button in the top bar toggles attack-refresh).</p>
+    <label class="opt">Delay <input type="number" id="ar-delay" min="0" max="3000" step="50" class="num"> ms <small>fixed floor before firing</small></label>
+    <label class="opt">Variance + <input type="number" id="ar-jitter" min="0" max="3000" step="50" class="num"> ms <small>random human-shaped amount added each time</small></label>
+    <p class="hint">Reloads the game the instant the server has applied your action — same as pressing F5 after attacking, just automatic. It does not play for you. With variance &gt; 0, each refresh waits the floor plus a random amount (bell-shaped, so it clusters near the middle like a real reaction rather than a fixed machine tick) — this removes the tell-tale identical timing. e.g. delay 150 + variance 250 → most refreshes land ~250–350 ms out, none exactly alike. ⚠ Refresh tools are a grey area under Cygames' terms; use at your own discretion. It also interrupts Full Auto, so turn it off for FA runs (the ⟳A button in the top bar toggles attack-refresh).</p>
     <hr>
     <div class="sect-h"><span>Accounts</span></div>
     <div class="row gap">
