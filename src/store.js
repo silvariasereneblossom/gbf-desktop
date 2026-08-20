@@ -46,7 +46,8 @@ const DEFAULTS = {
     summon: false,
     skill: false,
     delayMs: 0,            // fixed floor before firing (ms)
-    jitterMs: 0            // + a random human-shaped amount on top (0 = machine-exact)
+    jitterMs: 0,           // + a random human-shaped amount on top (0 = machine-exact)
+    pauseDuringFA: true    // don't reload while Full Auto is running (so it doesn't stop FA)
   },
   dailiesResetStamp: null, // YYYY-MM-DD (JST) of last auto-uncheck
   savedTeams: []           // imported granblue.team parties

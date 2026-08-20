@@ -586,6 +586,16 @@ const BATTLE_ENDPOINTS = {
 let lastAutoRefresh = 0;
 const gameContentsIds = new Set(); // main game view + any extra game windows
 
+// Read the game's own auto-attack state (Full Auto or normal-auto). Multiple defensive signals
+// because the battle engine is minified: stage.gGameStatus.auto_attack is the live flag, and
+// window.auto_flag is the legacy global some builds set. Returns false safely outside a battle.
+const FA_DETECT_JS = `(function () {
+  try {
+    var s = window.stage, gs = s && s.gGameStatus;
+    return { autoAttack: !!(gs && gs.auto_attack), autoFlag: !!window.auto_flag };
+  } catch (e) { return { autoAttack: false, autoFlag: false }; }
+})()`;
+
 // Delay before an auto-refresh fires: a fixed floor plus a random, human-shaped spread.
 // Human reaction times cluster rather than spread flat, so we approximate a skewed/bell shape by
 // averaging three uniforms (central-limit → roughly Gaussian) instead of a single flat random.
@@ -609,9 +619,18 @@ function installAutoRefresh(ses) {
     lastAutoRefresh = now;
     const delay = refreshDelay(ar);
     navLog('auto-refresh', `${kind} +${delay}ms`);
-    setTimeout(() => {
+    setTimeout(async () => {
       const wc = webContents.fromId(details.webContentsId);
-      if (wc && !wc.isDestroyed() && /#raid/.test(wc.getURL())) wc.reload();
+      if (!wc || wc.isDestroyed() || !/#raid/.test(wc.getURL())) return;
+      // Reloading during Full Auto stops the FA loop. When pauseDuringFA is on, check the game's
+      // own auto-attack state and skip the reload while FA (or normal-auto) is running.
+      if (ar.pauseDuringFA !== false) {
+        try {
+          const fa = await wc.executeJavaScript(FA_DETECT_JS, true);
+          if (fa && (fa.autoAttack || fa.autoFlag)) { navLog('auto-refresh', 'skipped — auto running'); return; }
+        } catch {}
+      }
+      wc.reload();
     }, delay);
   });
 }
@@ -770,12 +789,30 @@ app.whenReady().then(async () => {
           win.show();
         }
         if (process.env.GBF_DEBUG_AR) {
-          store.save({ autoRefresh: { ...store.load().autoRefresh, attack: true } });
+          store.save({ autoRefresh: { ...store.load().autoRefresh, attack: true, pauseDuringFA: true } });
+          // FA detection expression must evaluate cleanly and report not-auto outside a battle.
+          log('AR: FA detect (no battle) = ' + JSON.stringify(await gameView.webContents.executeJavaScript(FA_DETECT_JS, true)));
+
+          const fireAttack = () => gameView.webContents.executeJavaScript(`location.hash = '#raid/TEST'; fetch('/rest/raid/normal_attack_result.json?_=1', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then(r => r.status).catch(e => 'ERR ' + e.message)`);
+
+          // Case 1: not in FA → should reload.
           let reloaded = false;
-          gameView.webContents.on('did-start-navigation', (_e, url, inPlace, isMain) => { if (isMain && !inPlace) { reloaded = true; log('AR: reload started ' + url); } });
-          await gameView.webContents.executeJavaScript(`location.hash = '#raid/TEST'; fetch('/rest/raid/normal_attack_result.json?_=1', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then(r => r.status).catch(e => 'ERR ' + e.message)`).then(s => log('AR: fake attack POST status=' + s));
+          const onNav = (_e, url, inPlace, isMain) => { if (isMain && !inPlace) { reloaded = true; } };
+          gameView.webContents.on('did-start-navigation', onNav);
+          await fireAttack();
           await new Promise(r => setTimeout(r, 3000));
-          log('AR: reloaded=' + reloaded);
+          log('AR case1 (FA off): reloaded=' + reloaded + ' (expect true)');
+
+          // Case 2: simulate FA active via the same flag the detector reads → should skip.
+          gameView.webContents.removeListener('did-start-navigation', onNav);
+          await gameView.webContents.executeJavaScript(`window.auto_flag = true; true`);
+          let reloaded2 = false;
+          const onNav2 = (_e, url, inPlace, isMain) => { if (isMain && !inPlace) { reloaded2 = true; } };
+          gameView.webContents.on('did-start-navigation', onNav2);
+          await fireAttack();
+          await new Promise(r => setTimeout(r, 3000));
+          gameView.webContents.removeListener('did-start-navigation', onNav2);
+          log('AR case2 (FA on): reloaded=' + reloaded2 + ' (expect false)');
         }
         if (process.env.GBF_DEBUG_OPENER) {
           // Does a popup opened by the game page keep window.opener?
