@@ -17,14 +17,32 @@ lives in the system tray, keeps you on top of reset / dailies, and shows
 >
 > Using the opt-in tiers is your own decision and risk.
 
-## Run
+## Install / update
+
+Grab the installer from the [latest release](https://github.com/silvariasereneblossom/gbf-desktop/releases/latest).
+After that, updates come to you: the app checks the releases feed at launch and every 6 hours,
+and the tray right-click menu has **Check for updates** → downloads in the background →
+**Restart & update to vX.Y.Z** (a pending update also applies automatically on next quit).
+
+## Develop
 
 ```bash
 npm install
 npm start
 ```
 
-Build a Windows installer: `npm run dist` (output in `dist/`).
+Build a Windows installer locally: `npm run dist` (output in `dist/`).
+
+**Pipeline:** every push/PR runs a build check on CI (installer kept 7 days as an artifact).
+To ship a release: bump `version` in `package.json`, then
+
+```bash
+git tag v0.1.2 && git push origin v0.1.2
+```
+
+CI builds on a clean Windows runner and publishes the installer + update feed
+(`latest.yml`/blockmap) to a GitHub Release, which installed apps pick up automatically.
+`npm run release` does the same from a local machine (needs `GH_TOKEN`).
 
 ## What it does
 
