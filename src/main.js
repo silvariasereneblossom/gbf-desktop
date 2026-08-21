@@ -189,8 +189,11 @@ function createGameView() {
     // popup closed, reload once. Must be generous — the game exchanges the Mobage token with its
     // own server right after the popup closes, and reloading during that kills the login.
     child.on('closed', () => {
+      const alive = () => gameView && !gameView.webContents.isDestroyed();
+      if (!alive()) return;
       navLog('popup-closed', gameView.webContents.getURL());
       setTimeout(() => {
+        if (!alive()) return; // app may have quit / account switched during the grace period
         const u = gameView.webContents.getURL();
         if (/#authentication/.test(u)) { navLog('still-on-auth → reload', u); gameView.webContents.loadURL(GAME_URL); }
       }, 15000);
