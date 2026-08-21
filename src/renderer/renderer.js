@@ -298,6 +298,8 @@ $('#ar-jitter').onchange = e => saveAutoRefresh({ jitterMs: Math.max(0, Math.min
 $('#ar-pausefa').onchange = e => saveAutoRefresh({ pauseDuringFA: e.target.checked });
 
 $('#btn-newwin').onclick = () => gbf.newGameWindow();
+$('#btn-tile').onclick = () => gbf.tileWindows();
+$('#mw-autotile').onchange = async (e) => { settings = await gbf.settings.set({ multiwindow: { ...settings.multiwindow, autoTile: e.target.checked } }); };
 gbf.on('ping', (ms) => {
   const box = $('#pingbox');
   $('#ping-ms').textContent = ms == null ? '—' : ms + 'ms';
@@ -373,6 +375,7 @@ function renderSettings() {
   $('#opt-reset').checked = n.reset; $('#opt-lead').value = n.resetLeadMinutes; $('#opt-halfelixir').checked = n.halfElixir;
   $('#opt-custom').value = (n.customTimes || []).join(', ');
   $('#opt-tray').checked = settings.closeToTray; $('#opt-login').checked = settings.launchAtLogin; $('#opt-width').value = settings.sidebarWidth;
+  $('#mw-autotile').checked = (settings.multiwindow || {}).autoTile !== false;
 }
 async function saveSettings() {
   const customTimes = $('#opt-custom').value.split(',').map(s => s.trim()).filter(s => /^\d{1,2}:\d{2}$/.test(s)).map(s => s.padStart(5, '0'));
@@ -383,7 +386,7 @@ async function saveSettings() {
   });
   renderSettings();
 }
-$$('#tab-settings input:not([id^=ar-]):not([id^=sl-]):not([id^=px-]):not([id^=mf-]):not([id^=acc-]):not(#opt-trackers)').forEach(i => i.addEventListener('change', saveSettings));
+$$('#tab-settings input:not([id^=ar-]):not([id^=sl-]):not([id^=px-]):not([id^=mf-]):not([id^=acc-]):not([id^=mw-]):not(#opt-trackers)').forEach(i => i.addEventListener('change', saveSettings));
 $('#btn-clear-session').onclick = () => { if (confirm('Clear all game cookies and reload? You will need to log in again.')) gbf.clearSession(); };
 $('#btn-open-ext').onclick = () => gbf.openCurrentExternal();
 $('#btn-data-folder').onclick = () => gbf.openDataFolder();

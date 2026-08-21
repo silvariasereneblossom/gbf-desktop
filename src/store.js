@@ -31,6 +31,7 @@ const DEFAULTS = {
     { id: 'event',       label: 'Event dailies',            hash: '#event',               done: false },
     { id: 'shop',        label: 'Shop: daily trades',       hash: '#shop/exchange/list',  done: false }
   ],
+  multiwindow: { autoTile: true }, // auto-tile main + extra game windows as they open/close
   bookmarks: [],          // user quick-jump links (GW raid pages etc.) — the common destinations
                           // already live in the Dailies quick-nav, so nothing is seeded here
   accounts: [{ id: 1, name: 'Account 1' }], // each account = its own isolated cookie jar (session partition)
@@ -72,6 +73,7 @@ function load() {
     cache.skyleap = { ...DEFAULTS.skyleap, ...(cache.skyleap || {}) };
     cache.proxy = { ...DEFAULTS.proxy, ...(cache.proxy || {}) };
     cache.mudfish = { ...DEFAULTS.mudfish, ...(cache.mudfish || {}) };
+    cache.multiwindow = { ...DEFAULTS.multiwindow, ...(cache.multiwindow || {}) };
     if (!Array.isArray(cache.bookmarks)) cache.bookmarks = [];
     // Migration: drop the briefly-shipped seed bookmarks (they duplicate the Dailies quick-nav);
     // anything the user added themselves is kept.

@@ -320,6 +320,7 @@ function wireIpc() {
   ipcMain.handle('session:clear', clearSession);
   ipcMain.handle('app:openDataFolder', () => shell.openPath(app.getPath('userData')));
   ipcMain.handle('app:newGameWindow', () => { openGameWindow(); });
+  ipcMain.handle('app:tileWindows', () => { tileGameWindows(); });
   ipcMain.handle('accounts:switch', (_e, id) => { switchAccount(id | 0); return store.load(); });
   ipcMain.handle('accounts:add', (_e, name) => {
     const s = store.load();
@@ -654,10 +655,43 @@ function openGameWindow() {
     if (cmd === 'browser-backward') { w.webContents.navigationHistory.canGoBack() && w.webContents.navigationHistory.goBack(); e.preventDefault(); }
     if (cmd === 'browser-forward') { w.webContents.reload(); e.preventDefault(); }
   });
-  gameContentsIds.add(w.webContents.id);
-  w.on('closed', () => gameContentsIds.delete(w.webContents.id));
+  const wcId = w.webContents.id; // capture now — webContents is already destroyed inside 'closed'
+  gameContentsIds.add(wcId);
+  gameWindows.push(w);
+  w.on('closed', () => {
+    gameContentsIds.delete(wcId);
+    const i = gameWindows.indexOf(w); if (i >= 0) gameWindows.splice(i, 1);
+    if (store.load().multiwindow.autoTile) tileGameWindows();
+  });
   w.loadURL(GAME_URL + '#mypage');
+  if (store.load().multiwindow.autoTile) tileGameWindows();
   return w;
+}
+
+// ---- multiwindow auto-layout: tile main + extra game windows into equal columns (grid past 4),
+// on the display the main window lives on; restore the main window when the last extra closes. ----
+const gameWindows = [];
+let preTileBounds = null;
+function tileGameWindows() {
+  const { screen } = require('electron');
+  const extras = gameWindows.filter(w => !w.isDestroyed());
+  if (!win || win.isDestroyed()) return;
+  if (!extras.length) {
+    if (preTileBounds) { win.setBounds(preTileBounds); preTileBounds = null; }
+    return;
+  }
+  if (!preTileBounds) preTileBounds = win.getBounds();
+  const wins = [win, ...extras];
+  const wa = screen.getDisplayMatching(win.getBounds()).workArea;
+  const n = wins.length;
+  const cols = n <= 4 ? n : Math.ceil(n / 2);
+  const rows = Math.ceil(n / cols);
+  const cw = Math.floor(wa.width / cols), ch = Math.floor(wa.height / rows);
+  wins.forEach((w, i) => {
+    if (w.isMinimized && w.isMinimized()) w.restore();
+    w.setBounds({ x: wa.x + (i % cols) * cw, y: wa.y + Math.floor(i / cols) * ch, width: cw, height: ch });
+  });
+  navLog('tile', `${n} windows → ${cols}x${rows} @ ${cw}x${ch}`);
 }
 
 async function purgePartitionedMobageCookies(ses) {
@@ -788,6 +822,20 @@ app.whenReady().then(async () => {
           })`);
           log('bg test (hidden 5s): ' + JSON.stringify(bg) + ' — expect ticks≈50 unthrottled, ≈5 throttled');
           win.show();
+        }
+        if (process.env.GBF_DEBUG_TILE) {
+          const bounds = () => JSON.stringify([win.getBounds(), ...gameWindows.filter(w => !w.isDestroyed()).map(w => w.getBounds())]);
+          const before = win.getBounds();
+          const w1 = openGameWindow(); const w2 = openGameWindow();
+          await new Promise(r => setTimeout(r, 1200));
+          log('TILE 3-up: ' + bounds());
+          w2.close();
+          await new Promise(r => setTimeout(r, 800));
+          log('TILE 2-up: ' + bounds());
+          w1.close();
+          await new Promise(r => setTimeout(r, 800));
+          const after = win.getBounds();
+          log('TILE restore: before=' + JSON.stringify(before) + ' after=' + JSON.stringify(after) + ' match=' + (JSON.stringify(before) === JSON.stringify(after)));
         }
         if (process.env.GBF_DEBUG_BM) {
           const rows = () => sideView.webContents.executeJavaScript(`[...document.querySelectorAll('#bookmarks li .bm-go')].map(g => g.textContent + ' → ' + g.parentElement.querySelector('.bm-hash').textContent)`);

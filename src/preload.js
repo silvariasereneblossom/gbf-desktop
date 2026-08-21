@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld('gbf', {
   skyleapApply: (skyleap) => ipcRenderer.invoke('skyleap:apply', skyleap),
   proxyApply: (proxy) => ipcRenderer.invoke('proxy:apply', proxy),
   newGameWindow: () => ipcRenderer.invoke('app:newGameWindow'),
+  tileWindows: () => ipcRenderer.invoke('app:tileWindows'),
   accounts: {
     switch: (id) => ipcRenderer.invoke('accounts:switch', id),
     add: (name) => ipcRenderer.invoke('accounts:add', name),
