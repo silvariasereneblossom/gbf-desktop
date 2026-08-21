@@ -310,6 +310,7 @@ function wireIpc() {
   ipcMain.handle('dailies:set', (_e, dailies) => { store.save({ dailies }); ipcMain.emit('tray:rebuild'); return dailies; });
   ipcMain.handle('reset:ms', () => msUntilReset());
   ipcMain.handle('nav:go', (_e, hash) => navigate(hash));
+  ipcMain.handle('nav:currentUrl', () => (gameView ? gameView.webContents.getURL() : ''));
   ipcMain.handle('nav:reload', () => gameView.webContents.reload());
   ipcMain.handle('nav:back', () => gameView.webContents.navigationHistory.canGoBack() && gameView.webContents.navigationHistory.goBack());
   ipcMain.handle('nav:zoom', (_e, d) => d === 0 ? gameView.webContents.setZoomLevel(0) : zoom(d));
@@ -787,6 +788,18 @@ app.whenReady().then(async () => {
           })`);
           log('bg test (hidden 5s): ' + JSON.stringify(bg) + ' — expect ticks≈50 unthrottled, ≈5 throttled');
           win.show();
+        }
+        if (process.env.GBF_DEBUG_BM) {
+          const rows = () => sideView.webContents.executeJavaScript(`[...document.querySelectorAll('#bookmarks li .bm-go')].map(g => g.textContent + ' → ' + g.parentElement.querySelector('.bm-hash').textContent)`);
+          await sideView.webContents.executeJavaScript(`document.querySelector('[data-tab=bookmarks]').click(); true`);
+          await new Promise(r => setTimeout(r, 400));
+          log('BM default count (expect 0): ' + store.load().bookmarks.length);
+          // Put the game on a GW-like page, then "+ current page".
+          await gameView.webContents.executeJavaScript(`location.hash = '#quest/assist_entry_id/12345'`);
+          await new Promise(r => setTimeout(r, 700));
+          await sideView.webContents.executeJavaScript(`document.querySelector('#bm-current').click(); true`);
+          await new Promise(r => setTimeout(r, 500));
+          log('BM +current captured: ' + JSON.stringify(store.load().bookmarks) + ' | rows=' + JSON.stringify(await rows()));
         }
         if (process.env.GBF_DEBUG_AR) {
           store.save({ autoRefresh: { ...store.load().autoRefresh, attack: true, pauseDuringFA: true } });

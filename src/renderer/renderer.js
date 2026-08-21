@@ -73,21 +73,14 @@ gbf.on('dailies-reset', async () => { settings = await gbf.settings.get(); rende
 gbf.on('settings-changed', async () => { settings = await gbf.settings.get(); renderSettings(); renderDailies(); renderBookmarks(); });
 
 // ---------- bookmarks ----------
-const DEFAULT_BOOKMARKS = [
-  { id: 'b-home', label: 'Home', hash: '#mypage' },
-  { id: 'b-quest', label: 'Quest Results', hash: '#quest' },
-  { id: 'b-pending', label: 'Pending raids', hash: '#quest/assist/unclaimed/0/0' },
-  { id: 'b-backups', label: 'Backup Requests', hash: '#quest/assist' },
-  { id: 'b-raidid', label: 'Raid ID', hash: '#quest/assist_entry_id/0' },
-  { id: 'b-party', label: 'Party', hash: '#party/index/0/npc/0' },
-  { id: 'b-gacha', label: 'Draw', hash: '#gacha' }
-];
 const openBookmark = (b) => (/^https?:\/\//.test(b.hash) ? gbf.openExternal(b.hash) : gbf.nav.go(b.hash));
 const saveBookmarks = async (list) => { settings = await gbf.settings.set({ bookmarks: list }); renderBookmarks(); };
 
 function renderBookmarks() {
   const ul = $('#bookmarks'); ul.innerHTML = '';
-  (settings.bookmarks || []).forEach((b, i) => {
+  const list = settings.bookmarks || [];
+  if (!list.length) { ul.innerHTML = '<li class="hint">No bookmarks yet. Navigate the game to a page (e.g. a GW NM summon-select), then hit “+ current page”.</li>'; return; }
+  list.forEach((b, i) => {
     const li = document.createElement('li');
     li.draggable = true; li.dataset.idx = i;
     li.innerHTML = `<label class="bm-go">${esc(b.label)}</label><small class="bm-hash">${esc(b.hash)}</small><button class="rm" title="Remove">×</button>`;
@@ -105,14 +98,23 @@ function renderBookmarks() {
     ul.appendChild(li);
   });
 }
+const addBookmark = (label, hash) => saveBookmarks([...(settings.bookmarks || []), { id: 'b' + Date.now().toString(36), label, hash }]);
 $('#add-bm').onclick = () => {
   const label = $('#new-bm-label').value.trim(); const hash = $('#new-bm-hash').value.trim();
   if (!label || !hash) return;
-  saveBookmarks([...(settings.bookmarks || []), { id: 'b' + Date.now().toString(36), label, hash }]);
+  addBookmark(label, hash);
   $('#new-bm-label').value = ''; $('#new-bm-hash').value = '';
 };
 $('#new-bm-hash').addEventListener('keydown', e => e.key === 'Enter' && $('#add-bm').click());
-$('#bm-reset').onclick = () => { if (confirm('Reset bookmarks to the default list?')) saveBookmarks(DEFAULT_BOOKMARKS.map(b => ({ ...b }))); };
+$('#bm-current').onclick = async () => {
+  const url = await gbf.nav.currentUrl();
+  const hash = (url.split('#')[1] || '').trim();
+  if (!hash) { alert('The game is on its front page — open the screen you want to bookmark first.'); return; }
+  const label = $('#new-bm-label').value.trim() || ('#' + hash).slice(0, 24);
+  addBookmark(label, '#' + hash);
+  $('#new-bm-label').value = '';
+};
+$('#bm-clear').onclick = () => { if ((settings.bookmarks || []).length && confirm('Remove all bookmarks? (Handy to wipe last GW’s stale raid links.)')) saveBookmarks([]); };
 
 // ---------- teams ----------
 const status = (msg, err) => { const el = $('#team-status'); el.textContent = msg || ''; el.classList.toggle('err', !!err); };

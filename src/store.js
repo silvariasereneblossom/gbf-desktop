@@ -3,7 +3,13 @@ const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
 
-const FILE = path.join(app.getPath('userData'), 'settings.json');
+// Resolve lazily: main.js may call app.setPath('userData', …) (debug profile isolation) AFTER this
+// module is required, so computing the path at require-time would pin it to the wrong directory.
+let _file = null;
+function filePath() {
+  if (!_file) _file = path.join(app.getPath('userData'), 'settings.json');
+  return _file;
+}
 
 const DEFAULTS = {
   sidebarWidth: 340,
@@ -25,15 +31,8 @@ const DEFAULTS = {
     { id: 'event',       label: 'Event dailies',            hash: '#event',               done: false },
     { id: 'shop',        label: 'Shop: daily trades',       hash: '#shop/exchange/list',  done: false }
   ],
-  bookmarks: [            // quick-jump links (seeded from the gbf.wiki common-bookmarks list)
-    { id: 'b-home',    label: 'Home',            hash: '#mypage' },
-    { id: 'b-quest',   label: 'Quest Results',   hash: '#quest' },
-    { id: 'b-pending', label: 'Pending raids',   hash: '#quest/assist/unclaimed/0/0' },
-    { id: 'b-backups', label: 'Backup Requests', hash: '#quest/assist' },
-    { id: 'b-raidid',  label: 'Raid ID',         hash: '#quest/assist_entry_id/0' },
-    { id: 'b-party',   label: 'Party',           hash: '#party/index/0/npc/0' },
-    { id: 'b-gacha',   label: 'Draw',            hash: '#gacha' }
-  ],
+  bookmarks: [],          // user quick-jump links (GW raid pages etc.) — the common destinations
+                          // already live in the Dailies quick-nav, so nothing is seeded here
   accounts: [{ id: 1, name: 'Account 1' }], // each account = its own isolated cookie jar (session partition)
   activeAccountId: 1,
   blockTrackers: true,     // block ad/analytics beacons the game waits on at raid start (faster joins)
@@ -67,13 +66,20 @@ let cache = null;
 function load() {
   if (cache) return cache;
   try {
-    cache = { ...DEFAULTS, ...JSON.parse(fs.readFileSync(FILE, 'utf8')) };
+    cache = { ...DEFAULTS, ...JSON.parse(fs.readFileSync(filePath(), 'utf8')) };
     cache.notifications = { ...DEFAULTS.notifications, ...(cache.notifications || {}) };
     cache.autoRefresh = { ...DEFAULTS.autoRefresh, ...(cache.autoRefresh || {}) };
     cache.skyleap = { ...DEFAULTS.skyleap, ...(cache.skyleap || {}) };
     cache.proxy = { ...DEFAULTS.proxy, ...(cache.proxy || {}) };
     cache.mudfish = { ...DEFAULTS.mudfish, ...(cache.mudfish || {}) };
-    if (!Array.isArray(cache.bookmarks)) cache.bookmarks = DEFAULTS.bookmarks.map(b => ({ ...b }));
+    if (!Array.isArray(cache.bookmarks)) cache.bookmarks = [];
+    // Migration: drop the briefly-shipped seed bookmarks (they duplicate the Dailies quick-nav);
+    // anything the user added themselves is kept.
+    if ((cache.bookmarksSchema || 0) < 2) {
+      const seedIds = ['b-home', 'b-quest', 'b-pending', 'b-backups', 'b-raidid', 'b-party', 'b-gacha'];
+      cache.bookmarks = cache.bookmarks.filter(b => !seedIds.includes(b.id));
+      cache.bookmarksSchema = 2;
+    }
     if (!Array.isArray(cache.accounts) || !cache.accounts.length) cache.accounts = [...DEFAULTS.accounts];
     if (!cache.accounts.some(a => a.id === cache.activeAccountId)) cache.activeAccountId = cache.accounts[0].id;
   } catch {
@@ -85,9 +91,9 @@ function load() {
 function save(partial) {
   const next = { ...load(), ...partial };
   cache = next;
-  fs.mkdirSync(path.dirname(FILE), { recursive: true });
-  fs.writeFileSync(FILE, JSON.stringify(next, null, 2));
+  fs.mkdirSync(path.dirname(filePath()), { recursive: true });
+  fs.writeFileSync(filePath(), JSON.stringify(next, null, 2));
   return next;
 }
 
-module.exports = { load, save, DEFAULTS, FILE };
+module.exports = { load, save, DEFAULTS, filePath };

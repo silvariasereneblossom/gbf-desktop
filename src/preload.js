@@ -14,7 +14,8 @@ contextBridge.exposeInMainWorld('gbf', {
     go: (hash) => ipcRenderer.invoke('nav:go', hash),
     reload: () => ipcRenderer.invoke('nav:reload'),
     back: () => ipcRenderer.invoke('nav:back'),
-    zoom: (d) => ipcRenderer.invoke('nav:zoom', d)
+    zoom: (d) => ipcRenderer.invoke('nav:zoom', d),
+    currentUrl: () => ipcRenderer.invoke('nav:currentUrl')
   },
   toggleSidebar: () => ipcRenderer.invoke('app:toggleSidebar'),
   openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),

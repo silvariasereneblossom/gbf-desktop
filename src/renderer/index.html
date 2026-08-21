@@ -58,13 +58,16 @@
   <section id="tab-bookmarks" class="tab">
     <div class="sect-h"><span>Bookmarks</span><small>click to jump · drag to reorder</small></div>
     <ul id="bookmarks" class="dailies"></ul>
+    <div class="row gap">
+      <button id="bm-current">+ current page</button>
+      <button id="bm-clear" class="ghost" title="Remove all — handy to wipe last GW's stale links">Clear all</button>
+    </div>
     <div class="addrow">
-      <input id="new-bm-label" placeholder="Label">
+      <input id="new-bm-label" placeholder="Label (optional for + current page)">
       <input id="new-bm-hash" placeholder="#hash or full URL" class="narrow">
       <button id="add-bm">+</button>
     </div>
-    <div class="row gap"><button id="bm-reset" class="ghost">Reset to defaults</button></div>
-    <p class="hint">Jumps the game view to a hash (e.g. <code>#quest/assist</code>) — or open a full <code>https://</code> link in your browser. Seeded from the community "common bookmarks" list; add your own farm pages, a specific raid's summon-select, etc.</p>
+    <p class="hint"><b>+ current page</b> bookmarks whatever screen the game is on — the easy way to grab GW raid pages: open the NM's summon-select during the event, click it, done. GW raids rotate each event, so <b>Clear all</b> wipes the stale set to re-capture next time. You can also type a hash (<code>#quest/assist</code>) or a full <code>https://</code> link manually.</p>
   </section>
 
   <!-- TEAMS -->
