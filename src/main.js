@@ -4,7 +4,7 @@ const fs = require('fs');
 const store = require('./store');
 const teams = require('./teams');
 const party = require('./party');
-const { Reminders, msUntilReset } = require('./reminders');
+const { Reminders, msUntilReset, notify } = require('./reminders');
 
 const GAME_URL = 'https://game.granbluefantasy.jp/';
 // GBF serves a proper page to desktop Chrome; hide the "Electron/" token.
@@ -292,6 +292,7 @@ function createTray() {
       { label: 'Launch at login', type: 'checkbox', checked: s.launchAtLogin, click: (m) => { store.save({ launchAtLogin: m.checked }); app.setLoginItemSettings({ openAtLogin: m.checked }); } },
       { label: 'Log out (clear game cookies)', click: clearSession },
       { type: 'separator' },
+      trayUpdateItem(),
       { label: 'Quit', click: () => { quitting = true; app.quit(); } }
     ]));
   };
@@ -500,6 +501,45 @@ function startPingLoop() {
   };
   setInterval(ping, 10000);
   setTimeout(ping, 3000);
+}
+
+// ---- auto-update: checks the GitHub Releases feed (latest.yml) that CI publishes on tags. ----
+const updateState = { checking: false, available: null, downloaded: null, manual: false };
+let autoUpdater = null;
+function setupAutoUpdate() {
+  if (!app.isPackaged) return; // dev runs have no app-update.yml; tray shows a disabled entry
+  try { ({ autoUpdater } = require('electron-updater')); } catch (e) { navLog('update-error', 'updater missing: ' + e.message); return; }
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true; // even without the tray click, next quit applies it
+  autoUpdater.on('checking-for-update', () => { updateState.checking = true; ipcMain.emit('tray:rebuild'); });
+  autoUpdater.on('update-available', (info) => { updateState.available = info.version; navLog('update', 'available ' + info.version); });
+  autoUpdater.on('update-not-available', () => {
+    updateState.checking = false; updateState.available = null;
+    if (updateState.manual) { updateState.manual = false; notify('Granblue Fantasy Desktop', `Up to date (v${app.getVersion()}).`); }
+    ipcMain.emit('tray:rebuild');
+  });
+  autoUpdater.on('update-downloaded', (info) => {
+    updateState.checking = false; updateState.downloaded = info.version;
+    navLog('update', 'downloaded ' + info.version);
+    notify('Update ready', `v${info.version} downloaded — right-click the tray icon → “Restart & update”.`, () => autoUpdater.quitAndInstall());
+    ipcMain.emit('tray:rebuild');
+  });
+  autoUpdater.on('error', (e) => {
+    updateState.checking = false;
+    navLog('update-error', e.message);
+    if (updateState.manual) { updateState.manual = false; notify('Update check failed', e.message.slice(0, 120)); }
+    ipcMain.emit('tray:rebuild');
+  });
+  setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 15000);           // once at launch
+  setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 6 * 3600 * 1000); // then every 6h
+}
+
+function trayUpdateItem() {
+  if (!app.isPackaged) return { label: `v${app.getVersion()} (dev — updates off)`, enabled: false };
+  if (!autoUpdater) return { label: 'Updater unavailable', enabled: false };
+  if (updateState.downloaded) return { label: `Restart & update to v${updateState.downloaded}`, click: () => autoUpdater.quitAndInstall() };
+  if (updateState.checking) return { label: updateState.available ? `Downloading v${updateState.available}…` : 'Checking for updates…', enabled: false };
+  return { label: `Check for updates (v${app.getVersion()})`, click: () => { updateState.manual = true; autoUpdater.checkForUpdates().catch(() => {}); } };
 }
 
 // ---- Mudfish integration: its desktop client is a local web dashboard; host it in-app. ----
@@ -717,6 +757,7 @@ app.whenReady().then(async () => {
   // (Display is still allowed to sleep — this only blocks app suspension.)
   powerSaveBlocker.start('prevent-app-suspension');
   startPingLoop();
+  setupAutoUpdate();
   wireIpc();
   createWindow();
   createTray();

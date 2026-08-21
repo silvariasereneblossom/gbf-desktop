@@ -1,0 +1,31 @@
+name: Build check
+
+# Every push/PR to master: build the Windows installer on a clean runner so a broken
+# build is caught before a release tag is ever cut. The installer is kept for 7 days
+# as a workflow artifact (unsigned dev build, not a release).
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run dist -- --publish never
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer
+          path: dist/*.exe
+          retention-days: 7
