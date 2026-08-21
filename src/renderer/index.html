@@ -23,6 +23,7 @@
 
 <nav class="tabs">
   <button data-tab="dailies" class="active">Dailies</button>
+  <button data-tab="bookmarks">Bookmarks</button>
   <button data-tab="teams">Teams</button>
   <button data-tab="settings">Settings</button>
 </nav>
@@ -50,7 +51,20 @@
       <input id="new-daily-hash" placeholder="#hash (optional)" class="narrow">
       <button id="add-daily">+</button>
     </div>
-    <p class="hint">Checklist auto-clears at 05:00 JST. Click a row's → to jump to that screen in-game. Drag to reorder, × to remove.</p>
+    <p class="hint">Checklist auto-clears at 05:00 JST. Click a row's → to jump to that screen in-game. Drag to reorder, × to remove. More jump links live in the <b>Bookmarks</b> tab.</p>
+  </section>
+
+  <!-- BOOKMARKS -->
+  <section id="tab-bookmarks" class="tab">
+    <div class="sect-h"><span>Bookmarks</span><small>click to jump · drag to reorder</small></div>
+    <ul id="bookmarks" class="dailies"></ul>
+    <div class="addrow">
+      <input id="new-bm-label" placeholder="Label">
+      <input id="new-bm-hash" placeholder="#hash or full URL" class="narrow">
+      <button id="add-bm">+</button>
+    </div>
+    <div class="row gap"><button id="bm-reset" class="ghost">Reset to defaults</button></div>
+    <p class="hint">Jumps the game view to a hash (e.g. <code>#quest/assist</code>) — or open a full <code>https://</code> link in your browser. Seeded from the community "common bookmarks" list; add your own farm pages, a specific raid's summon-select, etc.</p>
   </section>
 
   <!-- TEAMS -->

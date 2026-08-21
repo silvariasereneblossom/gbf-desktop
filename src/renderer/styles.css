@@ -52,6 +52,8 @@ main { flex: 1; overflow: auto; padding: 10px; }
 .dailies li.done label { text-decoration: line-through; color: var(--muted); }
 .dailies li.dragover { border-top: 2px solid var(--accent); }
 .dailies label { flex: 1; cursor: pointer; }
+.dailies .bm-go { flex: 0 1 auto; color: var(--fg); }
+.dailies .bm-hash { flex: 1; color: var(--muted); font-size: 10.5px; margin-left: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dailies .go, .dailies .rm { padding: 1px 6px; font-size: 12px; }
 .dailies .rm { color: var(--muted); border: 0; background: transparent; }
 .addrow { display: flex; gap: 5px; margin-top: 8px; }

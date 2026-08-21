@@ -25,6 +25,15 @@ const DEFAULTS = {
     { id: 'event',       label: 'Event dailies',            hash: '#event',               done: false },
     { id: 'shop',        label: 'Shop: daily trades',       hash: '#shop/exchange/list',  done: false }
   ],
+  bookmarks: [            // quick-jump links (seeded from the gbf.wiki common-bookmarks list)
+    { id: 'b-home',    label: 'Home',            hash: '#mypage' },
+    { id: 'b-quest',   label: 'Quest Results',   hash: '#quest' },
+    { id: 'b-pending', label: 'Pending raids',   hash: '#quest/assist/unclaimed/0/0' },
+    { id: 'b-backups', label: 'Backup Requests', hash: '#quest/assist' },
+    { id: 'b-raidid',  label: 'Raid ID',         hash: '#quest/assist_entry_id/0' },
+    { id: 'b-party',   label: 'Party',           hash: '#party/index/0/npc/0' },
+    { id: 'b-gacha',   label: 'Draw',            hash: '#gacha' }
+  ],
   accounts: [{ id: 1, name: 'Account 1' }], // each account = its own isolated cookie jar (session partition)
   activeAccountId: 1,
   blockTrackers: true,     // block ad/analytics beacons the game waits on at raid start (faster joins)
@@ -64,6 +73,7 @@ function load() {
     cache.skyleap = { ...DEFAULTS.skyleap, ...(cache.skyleap || {}) };
     cache.proxy = { ...DEFAULTS.proxy, ...(cache.proxy || {}) };
     cache.mudfish = { ...DEFAULTS.mudfish, ...(cache.mudfish || {}) };
+    if (!Array.isArray(cache.bookmarks)) cache.bookmarks = DEFAULTS.bookmarks.map(b => ({ ...b }));
     if (!Array.isArray(cache.accounts) || !cache.accounts.length) cache.accounts = [...DEFAULTS.accounts];
     if (!cache.accounts.some(a => a.id === cache.activeAccountId)) cache.activeAccountId = cache.accounts[0].id;
   } catch {
