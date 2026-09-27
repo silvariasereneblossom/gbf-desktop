@@ -32,6 +32,12 @@ const DEFAULTS = {
     { id: 'shop',        label: 'Shop: daily trades',       hash: '#shop/exchange/list',  done: false }
   ],
   multiwindow: { autoTile: true }, // auto-tile main + extra game windows as they open/close
+  recording: {             // built-in recorder (captures the game view only, via tab capture)
+    fps: 30,
+    quality: 'high',       // 'standard' ≈ 6 Mbps, 'high' ≈ 12 Mbps
+    audio: true,           // game audio only (not system audio); you still hear it while recording
+    folder: ''             // '' = Videos\GBF Desktop
+  },
   bookmarks: [],          // user quick-jump links (GW raid pages etc.) — the common destinations
                           // already live in the Dailies quick-nav, so nothing is seeded here
   accounts: [{ id: 1, name: 'Account 1' }], // each account = its own isolated cookie jar (session partition)
@@ -74,6 +80,7 @@ function load() {
     cache.proxy = { ...DEFAULTS.proxy, ...(cache.proxy || {}) };
     cache.mudfish = { ...DEFAULTS.mudfish, ...(cache.mudfish || {}) };
     cache.multiwindow = { ...DEFAULTS.multiwindow, ...(cache.multiwindow || {}) };
+    cache.recording = { ...DEFAULTS.recording, ...(cache.recording || {}) };
     if (!Array.isArray(cache.bookmarks)) cache.bookmarks = [];
     // Migration: drop the briefly-shipped seed bookmarks (they duplicate the Dailies quick-nav);
     // anything the user added themselves is kept.

@@ -28,6 +28,10 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
 .resetbox b { font-variant-numeric: tabular-nums; }
 .resetbox.soon b { color: var(--bad); }
 .winbtns { display: flex; gap: 4px; }
+#btn-rec { color: var(--muted); font-variant-numeric: tabular-nums; }
+#btn-rec.on { color: #fff; background: var(--bad); border-color: var(--bad); animation: recpulse 1.6s ease-in-out infinite; }
+#btn-rec.saving { color: var(--accent); border-color: var(--accent); }
+@keyframes recpulse { 50% { opacity: .75; } }
 #btn-ar { color: var(--muted); font-size: 11px; }
 #btn-ar.on { color: var(--accent); border-color: var(--accent); }
 

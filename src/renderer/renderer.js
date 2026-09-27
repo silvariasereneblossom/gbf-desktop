@@ -299,6 +299,35 @@ $('#ar-pausefa').onchange = e => saveAutoRefresh({ pauseDuringFA: e.target.check
 
 $('#btn-newwin').onclick = () => gbf.newGameWindow();
 $('#btn-tile').onclick = () => gbf.tileWindows();
+
+// ---------- recording ----------
+let recS = { active: false, stopping: false, startedAt: 0, bytes: 0 };
+function renderRec() {
+  const b = $('#btn-rec');
+  b.classList.toggle('on', recS.active && !recS.stopping);
+  b.classList.toggle('saving', !!recS.stopping);
+  if (recS.stopping) { b.textContent = '…'; b.title = 'Saving recording…'; }
+  else if (recS.active) {
+    const s = Math.floor((Date.now() - recS.startedAt) / 1000);
+    b.textContent = `● ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    b.title = `Recording ${recS.file} — ${(recS.bytes / 1048576).toFixed(0)} MB (click or F9 to stop)`;
+  } else { b.textContent = '●'; b.title = 'Record the game view (F9)'; }
+  $('#rec-status').textContent = recS.active ? (recS.stopping ? 'saving…' : 'recording') : '';
+}
+$('#btn-rec').onclick = async () => { recS = await gbf.rec.toggle(); renderRec(); };
+gbf.on('rec-state', (s) => { recS = s; renderRec(); });
+setInterval(() => { if (recS.active) renderRec(); }, 1000);
+$('#rec-open').onclick = () => gbf.rec.openFolder();
+const saveRecSetting = async (patch) => { settings = await gbf.settings.set({ recording: { ...settings.recording, ...patch } }); };
+$('#rec-fps').onchange = (e) => saveRecSetting({ fps: +e.target.value });
+$('#rec-quality').onchange = (e) => saveRecSetting({ quality: e.target.value });
+$('#rec-audio').onchange = (e) => saveRecSetting({ audio: e.target.checked });
+function renderRecSettings() {
+  const r = settings.recording || {};
+  $('#rec-fps').value = String(r.fps === 60 ? 60 : 30);
+  $('#rec-quality').value = r.quality === 'standard' ? 'standard' : 'high';
+  $('#rec-audio').checked = r.audio !== false;
+}
 $('#mw-autotile').onchange = async (e) => { settings = await gbf.settings.set({ multiwindow: { ...settings.multiwindow, autoTile: e.target.checked } }); };
 gbf.on('ping', (ms) => {
   const box = $('#pingbox');
@@ -371,6 +400,7 @@ function renderSettings() {
   renderSkyleap();
   renderNetwork();
   renderAccounts();
+  renderRecSettings();
   const n = settings.notifications;
   $('#opt-reset').checked = n.reset; $('#opt-lead').value = n.resetLeadMinutes; $('#opt-halfelixir').checked = n.halfElixir;
   $('#opt-custom').value = (n.customTimes || []).join(', ');
@@ -386,7 +416,7 @@ async function saveSettings() {
   });
   renderSettings();
 }
-$$('#tab-settings input:not([id^=ar-]):not([id^=sl-]):not([id^=px-]):not([id^=mf-]):not([id^=acc-]):not([id^=mw-]):not(#opt-trackers)').forEach(i => i.addEventListener('change', saveSettings));
+$$('#tab-settings input:not([id^=ar-]):not([id^=sl-]):not([id^=px-]):not([id^=mf-]):not([id^=acc-]):not([id^=mw-]):not([id^=rec-]):not(#opt-trackers)').forEach(i => i.addEventListener('change', saveSettings));
 $('#btn-clear-session').onclick = () => { if (confirm('Clear all game cookies and reload? You will need to log in again.')) gbf.clearSession(); };
 $('#btn-open-ext').onclick = () => gbf.openCurrentExternal();
 $('#btn-data-folder').onclick = () => gbf.openDataFolder();
@@ -396,4 +426,5 @@ $('#btn-data-folder').onclick = () => gbf.openDataFolder();
   settings = await gbf.settings.get();
   $('#auto-accept').checked = !!settings.autoEquipAccepted;
   renderDailies(); renderBookmarks(); renderSaved(); renderSettings(); tickReset(); refreshDeck(); renderMudfish();
+  recS = await gbf.rec.state(); renderRec();
 })();

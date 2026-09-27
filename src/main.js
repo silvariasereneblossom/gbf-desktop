@@ -216,6 +216,7 @@ function createGameView() {
     if (input.type !== 'keyDown') return;
     const ctrl = input.control || input.meta;
     if (input.key === 'F5' || (ctrl && input.key.toLowerCase() === 'r')) { gameView.webContents.reload(); e.preventDefault(); }
+    if (input.key === 'F9' && !input.isAutoRepeat) { rec.active ? stopRecording() : startRecording(); e.preventDefault(); }
     if (ctrl && input.key.toLowerCase() === 'b') { toggleSidebar(); e.preventDefault(); }
     if (ctrl && (input.key === '=' || input.key === '+')) { zoom(+0.5); e.preventDefault(); }
     if (ctrl && input.key === '-') { zoom(-0.5); e.preventDefault(); }
@@ -287,6 +288,9 @@ function createTray() {
       ...pending.slice(0, 6).map(d => ({ label: `   → ${d.label}`, click: () => navigate(d.hash) })),
       { type: 'separator' },
       { label: 'New game window', click: openGameWindow },
+      rec.active
+        ? { label: rec.stopping ? 'Saving recording…' : '■ Stop recording', enabled: !rec.stopping, click: stopRecording }
+        : { label: '● Start recording (F9)', click: startRecording },
       { label: 'Auto-refresh on attack', type: 'checkbox', checked: !!(s.autoRefresh && s.autoRefresh.attack), click: (m) => { store.save({ autoRefresh: { ...store.load().autoRefresh, attack: m.checked } }); sendSide('settings-changed'); } },
       { label: 'Close to tray', type: 'checkbox', checked: s.closeToTray, click: (m) => store.save({ closeToTray: m.checked }) },
       { label: 'Launch at login', type: 'checkbox', checked: s.launchAtLogin, click: (m) => { store.save({ launchAtLogin: m.checked }); app.setLoginItemSettings({ openAtLogin: m.checked }); } },
@@ -325,6 +329,18 @@ function wireIpc() {
   ipcMain.handle('app:openDataFolder', () => shell.openPath(app.getPath('userData')));
   ipcMain.handle('app:newGameWindow', () => { openGameWindow(); });
   ipcMain.handle('app:tileWindows', () => { tileGameWindows(); });
+  // Recorder: chunks are only accepted from our hidden recorder window.
+  const fromRecorder = (e) => rec.win && !rec.win.isDestroyed() && e.sender === rec.win.webContents;
+  ipcMain.on('rec:chunk', (e, u8) => {
+    if (!fromRecorder(e) || !rec.out) return;
+    const buf = Buffer.from(u8);
+    rec.out.write(buf); rec.bytes += buf.length;
+  });
+  ipcMain.on('rec:stopped', (e) => { if (fromRecorder(e)) finalizeRecording('stopped'); });
+  ipcMain.on('rec:error', (e, msg) => { if (fromRecorder(e)) { navLog('rec-error', msg); stopRecording(); } });
+  ipcMain.handle('rec:toggle', () => (rec.active ? stopRecording() : startRecording()));
+  ipcMain.handle('rec:state', () => recState());
+  ipcMain.handle('rec:openFolder', () => { const d = recordingsDir(); fs.mkdirSync(d, { recursive: true }); return shell.openPath(d); });
   ipcMain.handle('accounts:switch', (_e, id) => { switchAccount(id | 0); return store.load(); });
   ipcMain.handle('accounts:add', (_e, name) => {
     const s = store.load();
@@ -430,7 +446,11 @@ function wireIpc() {
 // ---------- lifecycle ----------
 app.on('second-instance', showWindow);
 app.on('window-all-closed', () => { /* keep running in tray */ });
-app.on('before-quit', () => { quitting = true; });
+app.on('before-quit', (e) => {
+  quitting = true;
+  // Never cut a recording off mid-file: finalize first, then quit (finalizeRecording re-calls quit).
+  if (rec.active) { e.preventDefault(); rec.quitAfter = true; stopRecording(); }
+});
 
 // Mobage stores its login in CHIPS *partitioned* cookies (CSID_P etc.). Those are scoped to the
 // top-level site, so a session created in the login popup (top-level = mobage.jp) is invisible to
@@ -501,6 +521,95 @@ function startPingLoop() {
   };
   setInterval(ping, 10000);
   setTimeout(ping, 3000);
+}
+
+// ---- built-in recorder: tab-captures the GAME VIEW (video + its own audio) from a hidden window. ----
+const rec = { win: null, ready: null, active: false, stopping: false, out: null, file: '', bytes: 0, startedAt: 0, mime: '', quitAfter: false, watchdog: null };
+
+function recordingsDir() {
+  const f = (store.load().recording || {}).folder;
+  return f || path.join(app.getPath('videos'), 'GBF Desktop');
+}
+
+function recState() {
+  return { active: rec.active, stopping: rec.stopping, startedAt: rec.startedAt, bytes: rec.bytes, file: rec.file ? path.basename(rec.file) : '' };
+}
+function broadcastRec() { sendSide('rec-state', recState()); ipcMain.emit('tray:rebuild'); }
+
+function ensureRecorder() {
+  if (rec.win && !rec.win.isDestroyed()) return rec.ready;
+  rec.win = new BrowserWindow({
+    show: false, width: 320, height: 240, skipTaskbar: true,
+    webPreferences: { preload: path.join(__dirname, 'recorder-preload.js'), contextIsolation: true, nodeIntegration: false, backgroundThrottling: false, partition: 'gbf-recorder' }
+  });
+  // Answer the recorder's getDisplayMedia() with the game view itself: tab capture of its frame,
+  // audio from that frame only, and local echo so you keep hearing the game while recording.
+  rec.win.webContents.session.setDisplayMediaRequestHandler((_req, callback) => {
+    if (!gameView || gameView.webContents.isDestroyed()) return callback({});
+    const frame = gameView.webContents.mainFrame;
+    const withAudio = (store.load().recording || {}).audio !== false;
+    callback(withAudio ? { video: frame, audio: frame, enableLocalEcho: true } : { video: frame });
+  });
+  rec.win.on('closed', () => { rec.win = null; rec.ready = null; if (rec.active) finalizeRecording('recorder window closed'); });
+  rec.ready = rec.win.loadFile(path.join(__dirname, 'recorder.html')).then(() => rec.win);
+  return rec.ready;
+}
+
+async function startRecording() {
+  if (rec.active || rec.stopping) return recState();
+  const s = store.load().recording || {};
+  try {
+    const w = await ensureRecorder();
+    const mime = await w.webContents.executeJavaScript('pickMime()');
+    const ext = /mp4/.test(mime) ? 'mp4' : 'webm';
+    const dir = recordingsDir();
+    fs.mkdirSync(dir, { recursive: true });
+    const d = new Date(), p = (n) => String(n).padStart(2, '0');
+    rec.file = path.join(dir, `GBF ${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}-${p(d.getMinutes())}-${p(d.getSeconds())}.${ext}`);
+    rec.out = fs.createWriteStream(rec.file);
+    rec.bytes = 0;
+    const vbps = s.quality === 'standard' ? 6e6 : 12e6;
+    // userGesture=true: getDisplayMedia requires transient activation.
+    const info = await w.webContents.executeJavaScript(`startRecording(${JSON.stringify({ fps: s.fps === 60 ? 60 : 30, audio: s.audio !== false, mime, vbps })})`, true);
+    rec.mime = info.mime; rec.active = true; rec.startedAt = Date.now();
+    navLog('rec', `start ${path.basename(rec.file)} ${info.mime} ${info.width}x${info.height}@${info.fps} audio=${info.audioTracks}`);
+    broadcastRec();
+  } catch (e) {
+    navLog('rec-error', 'start: ' + e.message);
+    if (rec.out) { rec.out.destroy(); try { fs.unlinkSync(rec.file); } catch {} }
+    rec.out = null; rec.file = '';
+    notify('Recording failed to start', String(e.message).replace(/^Error invoking remote method[^:]*: /, '').slice(0, 140));
+    broadcastRec();
+  }
+  return recState();
+}
+
+function stopRecording() {
+  if (!rec.active || rec.stopping) return recState();
+  rec.stopping = true;
+  broadcastRec();
+  // Normal path: page stops MediaRecorder → flushes last chunk → 'rec:stopped' → finalize.
+  // Watchdog covers a wedged recorder so the file still gets closed.
+  rec.watchdog = setTimeout(() => finalizeRecording('watchdog'), 6000);
+  if (rec.win && !rec.win.isDestroyed()) rec.win.webContents.executeJavaScript('stopRecording()').catch(() => finalizeRecording('stop failed'));
+  else finalizeRecording('no recorder');
+  return recState();
+}
+
+function finalizeRecording(reason) {
+  if (!rec.active && !rec.stopping) return;
+  clearTimeout(rec.watchdog);
+  const file = rec.file, bytes = rec.bytes, secs = Math.round((Date.now() - rec.startedAt) / 1000);
+  const out = rec.out;
+  rec.active = false; rec.stopping = false; rec.out = null;
+  const done = () => {
+    navLog('rec', `saved ${path.basename(file)} ${(bytes / 1048576).toFixed(1)}MB ${secs}s (${reason})`);
+    if (bytes > 0) notify('Recording saved', `${path.basename(file)} — ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}, ${(bytes / 1048576).toFixed(0)} MB. Click to show.`, () => shell.showItemInFolder(file));
+    else { try { fs.unlinkSync(file); } catch {} notify('Recording was empty', 'Nothing was captured — see nav.log.'); }
+    broadcastRec();
+    if (rec.quitAfter) app.quit();
+  };
+  if (out) out.end(done); else done();
 }
 
 // ---- auto-update: checks the GitHub Releases feed (latest.yml) that CI publishes on tags. ----
@@ -866,6 +975,48 @@ app.whenReady().then(async () => {
           })`);
           log('bg test (hidden 5s): ' + JSON.stringify(bg) + ' — expect ticks≈50 unthrottled, ≈5 throttled');
           win.show();
+        }
+        if (process.env.GBF_DEBUG_REC) {
+          store.save({ recording: { ...store.load().recording, folder: path.join(dir, 'rec') } }); // never the real Videos folder
+          const w = await ensureRecorder();
+          log('REC support: ' + JSON.stringify(await w.webContents.executeJavaScript(`({ pick: pickMime(), mp4: MediaRecorder.isTypeSupported('video/mp4'), vp9: MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') })`)));
+          const check = (label) => {
+            const f = rec.lastFile;
+            if (!f || !fs.existsSync(f)) return log(`REC ${label}: NO FILE`);
+            const b = fs.readFileSync(f);
+            const head = b.subarray(0, 12);
+            const kind = head.subarray(4, 8).toString('ascii') === 'ftyp' ? 'mp4(ftyp)' : (head.readUInt32BE(0) === 0x1A45DFA3 ? 'webm(EBML)' : 'UNKNOWN ' + head.toString('hex'));
+            log(`REC ${label}: ${path.basename(f)} size=${b.length} container=${kind}`);
+          };
+          const runOnce = async (label, hide) => {
+            if (hide) win.hide();
+            const st = await startRecording();
+            rec.lastFile = rec.file;
+            log(`REC ${label} started: active=${st.active} file=${st.file}`);
+            const samples = [];
+            for (let i = 0; i < 6; i++) { await new Promise(r => setTimeout(r, 2000)); samples.push(rec.bytes); }
+            log(`REC ${label} bytes on disk every 2s: ${samples.join(' → ')}`);
+            stopRecording();
+            await new Promise(r => setTimeout(r, 3000));
+            log(`REC ${label} after stop: active=${rec.active} stopping=${rec.stopping}`);
+            check(label);
+            if (hide) win.show();
+          };
+          await runOnce('visible', false);
+          await runOnce('tray-hidden', true);
+          // Decode check: play the last file back in a throwaway window (debug only).
+          const pw = new BrowserWindow({ show: false, webPreferences: { webSecurity: false } });
+          await pw.loadURL('about:blank');
+          const url = 'file:///' + rec.lastFile.replace(/\\/g, '/');
+          const meta = await pw.webContents.executeJavaScript(`new Promise(res => {
+            const v = document.createElement('video'); v.muted = true; v.preload = 'auto'; v.src = ${JSON.stringify(url)};
+            v.onerror = () => res({ error: v.error && v.error.message });
+            v.onloadedmetadata = () => { v.currentTime = 1e6; };
+            v.onseeked = () => res({ w: v.videoWidth, h: v.videoHeight, duration: +v.duration.toFixed(2) });
+            setTimeout(() => res({ timeout: true, w: v.videoWidth, h: v.videoHeight }), 8000);
+          })`);
+          log('REC decode: ' + JSON.stringify(meta));
+          pw.destroy();
         }
         if (process.env.GBF_DEBUG_TILE) {
           const bounds = () => JSON.stringify([win.getBounds(), ...gameWindows.filter(w => !w.isDestroyed()).map(w => w.getBounds())]);

@@ -1,0 +1,14 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'">
+<title>GBF recorder</title>
+</head>
+<body>
+<!-- Hidden window. Main process drives it via executeJavaScript(…, userGesture=true):
+     getDisplayMedia() is answered by main's display-media handler with the GAME VIEW's frame
+     (tab capture: game video + game audio only), MediaRecorder encodes, chunks stream to main. -->
+<script src="recorder.js"></script>
+</body>
+</html>

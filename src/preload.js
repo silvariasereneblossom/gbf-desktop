@@ -26,6 +26,11 @@ contextBridge.exposeInMainWorld('gbf', {
   proxyApply: (proxy) => ipcRenderer.invoke('proxy:apply', proxy),
   newGameWindow: () => ipcRenderer.invoke('app:newGameWindow'),
   tileWindows: () => ipcRenderer.invoke('app:tileWindows'),
+  rec: {
+    toggle: () => ipcRenderer.invoke('rec:toggle'),
+    state: () => ipcRenderer.invoke('rec:state'),
+    openFolder: () => ipcRenderer.invoke('rec:openFolder')
+  },
   accounts: {
     switch: (id) => ipcRenderer.invoke('accounts:switch', id),
     add: (name) => ipcRenderer.invoke('accounts:add', name),
@@ -51,7 +56,7 @@ contextBridge.exposeInMainWorld('gbf', {
     remove: (code) => ipcRenderer.invoke('teams:remove', code)
   },
   on: (channel, fn) => {
-    const ok = ['dailies-reset', 'game-url', 'settings-changed', 'ping', 'mudfish-up'];
+    const ok = ['dailies-reset', 'game-url', 'settings-changed', 'ping', 'mudfish-up', 'rec-state'];
     if (ok.includes(channel)) ipcRenderer.on(channel, (_e, ...a) => fn(...a));
   }
 });

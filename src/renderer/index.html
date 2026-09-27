@@ -14,6 +14,7 @@
   <div class="winbtns">
     <button id="btn-newwin" title="New game window (same login) — for multiwindow flow/guarding">⧉</button>
     <button id="btn-tile" title="Tile main + game windows across the screen">▦</button>
+    <button id="btn-rec" title="Record the game view (F9)">●</button>
     <button id="btn-ar" title="Auto-refresh on attack (toggle)">⟳A</button>
     <button id="btn-reload" title="Reload game (F5)">⟳</button>
     <button id="btn-zoom-out" title="Zoom out (Ctrl -)">−</button>
@@ -119,6 +120,13 @@
     <label class="opt"><input type="checkbox" id="opt-login"> Launch at Windows login</label>
     <label class="opt">Sidebar width <input type="number" id="opt-width" min="260" max="600" class="num"> px</label>
     <label class="opt"><input type="checkbox" id="mw-autotile"> Auto-tile windows when opening/closing extra game windows (▦ tiles on demand)</label>
+    <hr>
+    <div class="sect-h"><span>Recording</span><small id="rec-status"></small></div>
+    <label class="opt">Frame rate <select id="rec-fps"><option value="30">30 fps</option><option value="60">60 fps</option></select></label>
+    <label class="opt">Quality <select id="rec-quality"><option value="standard">Standard (~6 Mbps · ~2.7 GB/hr)</option><option value="high">High (~12 Mbps · ~5.4 GB/hr)</option></select></label>
+    <label class="opt"><input type="checkbox" id="rec-audio"> Record game audio (game only — not Discord/system; you still hear it)</label>
+    <div class="row gap"><button id="rec-open" class="ghost">Open recordings folder</button></div>
+    <p class="hint">● in the top bar, <b>F9</b> in the game, or the tray menu starts/stops. Captures only the game view — not the sidebar or your desktop — and keeps recording while the window is minimized or in the tray. Saved to <code>Videos\GBF Desktop</code> as MP4 (or WebM if MP4 encoding isn't available). Quitting mid-recording finalizes the file first.</p>
     <hr>
     <div class="sect-h"><span>Network</span></div>
     <label class="opt"><input type="checkbox" id="opt-trackers"> Block ad/analytics trackers (faster raid joins)</label>
