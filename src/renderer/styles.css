@@ -44,6 +44,18 @@ body.collapsed #rail-expand {
 body.collapsed #rail-expand:hover { background: var(--panel2); color: var(--accent); }
 #rail-expand .rail-rec { display: none; color: var(--bad); font-size: 11px; animation: recpulse 1.6s ease-in-out infinite; }
 body.recording #rail-expand .rail-rec { display: block; }
+#rail-expand .rail-upd { display: none; color: var(--ok); font-size: 12px; }
+body.update-ready #rail-expand .rail-upd { display: block; }
+
+/* Update banner (only while downloading / ready) */
+#update-banner { position: relative; display: flex; align-items: center; gap: 8px; padding: 7px 10px; background: #13261b; border-bottom: 1px solid #235a39; color: #cdeed8; font-size: 12px; }
+#update-banner.hidden { display: none; }
+#update-banner #ub-text { flex: 1; }
+#update-banner button { background: var(--ok); color: #0b1a10; border-color: var(--ok); font-weight: 600; padding: 3px 9px; }
+#ub-bar { position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; }
+#ub-bar i { display: block; height: 100%; width: 0; background: var(--ok); transition: width .3s; }
+.ghost-link { color: var(--muted); font-size: 12px; align-self: center; margin-left: auto; }
+#upd-install { background: var(--ok); color: #0b1a10; border-color: var(--ok); font-weight: 600; }
 #btn-rec { color: var(--muted); font-variant-numeric: tabular-nums; }
 #btn-rec.on { color: #fff; background: var(--bad); border-color: var(--bad); animation: recpulse 1.6s ease-in-out infinite; }
 #btn-rec.saving { color: var(--accent); border-color: var(--accent); }

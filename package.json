@@ -1,7 +1,7 @@
 {
   "name": "gbf-desktop",
   "productName": "Granblue Fantasy Desktop",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Desktop wrapper for Granblue Fantasy with tray, reset/daily reminders and granblue.team import",
   "main": "src/main.js",
   "scripts": {

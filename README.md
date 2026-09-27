@@ -20,9 +20,12 @@ lives in the system tray, keeps you on top of reset / dailies, and shows
 ## Install / update
 
 Grab the installer from the [latest release](https://github.com/silvariasereneblossom/gbf-desktop/releases/latest).
-After that, updates come to you: the app checks the releases feed at launch and every 6 hours,
-and the tray right-click menu has **Check for updates** → downloads in the background →
-**Restart & update to vX.Y.Z** (a pending update also applies automatically on next quit).
+After that, updates come to you straight from this repo's GitHub Releases: the app checks at
+launch and every 6 hours and downloads in the background. In the client, **Settings → Updates**
+shows your version and status with a **Check for updates** button; while an update downloads, a
+banner with a progress bar appears under the top bar, then turns into **Restart & update** — a
+silent install that reopens the app on the new version. (Same controls in the tray menu; a
+pending update also installs automatically the next time you quit.)
 
 ## Develop
 

@@ -8,7 +8,7 @@
 </head>
 <body>
 <!-- Shown only when the sidebar is collapsed: the whole thin rail is one "bring it back" button. -->
-<button id="rail-expand" title="Show sidebar (Ctrl+B)"><span class="rail-chev">›</span><span class="rail-rec" title="Recording">●</span></button>
+<button id="rail-expand" title="Show sidebar (Ctrl+B)"><span class="rail-chev">›</span><span class="rail-rec" title="Recording">●</span><span class="rail-upd" title="Update ready">⬆</span></button>
 <header class="topbar">
   <div class="brand">GBF<span>desktop</span></div>
   <div class="resetbox" id="pingbox" title="Latency to game.granbluefantasy.jp through the game session (proxy included)"><span class="lbl">ping</span><b id="ping-ms">—</b></div>
@@ -24,6 +24,13 @@
     <button id="btn-hide" title="Hide sidebar (Ctrl+B) — click the thin rail on the left to bring it back">⇤</button>
   </div>
 </header>
+
+<!-- Appears only while an update downloads or once it's ready. -->
+<div id="update-banner" class="hidden">
+  <span id="ub-text"></span>
+  <button id="ub-install" class="hidden">Restart &amp; update</button>
+  <div id="ub-bar"><i></i></div>
+</div>
 
 <nav class="tabs">
   <button data-tab="dailies" class="active">Dailies</button>
@@ -113,6 +120,15 @@
 
   <!-- SETTINGS -->
   <section id="tab-settings" class="tab">
+    <div class="sect-h"><span>Updates</span><small id="upd-version"></small></div>
+    <p id="upd-status" class="status"></p>
+    <div class="row gap">
+      <button id="upd-check">Check for updates</button>
+      <button id="upd-install" class="hidden">Restart &amp; update</button>
+      <a href="#" id="upd-notes" class="ghost-link">Release notes ↗</a>
+    </div>
+    <p class="hint">Updates come from this project's GitHub Releases (<code>silvariasereneblossom/gbf-desktop</code>). The app checks at launch and every 6 hours and downloads in the background; a downloaded update installs silently and reopens the app when you click <b>Restart &amp; update</b> — or automatically the next time you quit.</p>
+    <hr>
     <label class="opt"><input type="checkbox" id="opt-reset"> Notify at daily reset (05:00 JST)</label>
     <label class="opt">Warn <input type="number" id="opt-lead" min="0" max="720" class="num"> min before reset if dailies unfinished</label>
     <label class="opt"><input type="checkbox" id="opt-halfelixir"> Hourly AP / half-elixir nudge</label>

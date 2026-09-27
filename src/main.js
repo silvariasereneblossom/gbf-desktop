@@ -342,6 +342,9 @@ function wireIpc() {
   });
   ipcMain.on('rec:stopped', (e) => { if (fromRecorder(e)) finalizeRecording('stopped'); });
   ipcMain.on('rec:error', (e, msg) => { if (fromRecorder(e)) { navLog('rec-error', msg); stopRecording(); } });
+  ipcMain.handle('update:state', () => publicUpdateState());
+  ipcMain.handle('update:check', () => checkForUpdate(true));
+  ipcMain.handle('update:install', () => { installUpdate(); return publicUpdateState(); });
   ipcMain.handle('rec:toggle', () => (rec.active ? stopRecording() : startRecording()));
   ipcMain.handle('rec:state', () => recState());
   ipcMain.handle('rec:openFolder', () => { const d = recordingsDir(); fs.mkdirSync(d, { recursive: true }); return shell.openPath(d); });
@@ -617,42 +620,86 @@ function finalizeRecording(reason) {
 }
 
 // ---- auto-update: checks the GitHub Releases feed (latest.yml) that CI publishes on tags. ----
-const updateState = { checking: false, available: null, downloaded: null, manual: false };
+// One state object drives the tray item AND the in-client Updates UI (sidebar banner + Settings).
+const REPO = { owner: 'silvariasereneblossom', repo: 'gbf-desktop' };
+const updateState = { phase: 'idle', available: null, downloaded: null, progress: 0, lastChecked: 0, error: '', manual: false };
+// phase: idle | checking | downloading | ready | uptodate | error | disabled
 let autoUpdater = null;
+const debugUpdater = !!process.env.GBF_DEBUG_UPDATER; // dev-only: exercise the real GitHub feed from an unpackaged run
+
+function publicUpdateState() {
+  return {
+    ...updateState, current: app.getVersion(), enabled: !!autoUpdater,
+    releasesUrl: `https://github.com/${REPO.owner}/${REPO.repo}/releases` + (updateState.downloaded || updateState.available ? `/tag/v${updateState.downloaded || updateState.available}` : '')
+  };
+}
+function broadcastUpdate() { sendSide('update-state', publicUpdateState()); ipcMain.emit('tray:rebuild'); }
+
 function setupAutoUpdate() {
-  if (!app.isPackaged) return; // dev runs have no app-update.yml; tray shows a disabled entry
-  try { ({ autoUpdater } = require('electron-updater')); } catch (e) { navLog('update-error', 'updater missing: ' + e.message); return; }
+  if (!app.isPackaged && !debugUpdater) { updateState.phase = 'disabled'; return; } // dev runs have no app-update.yml
+  try { ({ autoUpdater } = require('electron-updater')); } catch (e) { navLog('update-error', 'updater missing: ' + e.message); updateState.phase = 'disabled'; return; }
+  if (debugUpdater) {
+    autoUpdater.forceDevUpdateConfig = true;
+    autoUpdater.setFeedURL({ provider: 'github', ...REPO });
+  }
   autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true; // even without the tray click, next quit applies it
-  autoUpdater.on('checking-for-update', () => { updateState.checking = true; ipcMain.emit('tray:rebuild'); });
-  autoUpdater.on('update-available', (info) => { updateState.available = info.version; navLog('update', 'available ' + info.version); });
+  autoUpdater.autoInstallOnAppQuit = true; // even without clicking, the next quit applies it
+  autoUpdater.on('checking-for-update', () => { updateState.phase = 'checking'; updateState.error = ''; broadcastUpdate(); });
+  autoUpdater.on('update-available', (info) => {
+    updateState.available = info.version; updateState.phase = 'downloading'; updateState.progress = 0; updateState.lastChecked = Date.now();
+    navLog('update', 'available ' + info.version); broadcastUpdate();
+  });
+  autoUpdater.on('download-progress', (p) => {
+    const pct = Math.floor(p.percent || 0);
+    if (pct !== updateState.progress) { updateState.progress = pct; sendSide('update-state', publicUpdateState()); }
+  });
   autoUpdater.on('update-not-available', () => {
-    updateState.checking = false; updateState.available = null;
+    updateState.phase = 'uptodate'; updateState.available = null; updateState.lastChecked = Date.now();
     if (updateState.manual) { updateState.manual = false; notify('Granblue Fantasy Desktop', `Up to date (v${app.getVersion()}).`); }
-    ipcMain.emit('tray:rebuild');
+    broadcastUpdate();
   });
   autoUpdater.on('update-downloaded', (info) => {
-    updateState.checking = false; updateState.downloaded = info.version;
+    updateState.phase = 'ready'; updateState.downloaded = (info && info.version) || updateState.available || 'new version'; updateState.progress = 100;
     navLog('update', 'downloaded ' + info.version);
-    notify('Update ready', `v${info.version} downloaded — right-click the tray icon → “Restart & update”.`, () => autoUpdater.quitAndInstall());
-    ipcMain.emit('tray:rebuild');
+    if (!debugUpdater) notify('Update ready', `v${info.version} is ready — click “Restart & update” in the sidebar (or the tray).`, installUpdate);
+    broadcastUpdate();
   });
   autoUpdater.on('error', (e) => {
-    updateState.checking = false;
+    updateState.phase = 'error'; updateState.error = String(e && e.message || e).split('\n')[0].slice(0, 160); updateState.lastChecked = Date.now();
     navLog('update-error', e.message);
-    if (updateState.manual) { updateState.manual = false; notify('Update check failed', e.message.slice(0, 120)); }
-    ipcMain.emit('tray:rebuild');
+    if (updateState.manual) { updateState.manual = false; notify('Update check failed', updateState.error); }
+    broadcastUpdate();
   });
-  setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 15000);           // once at launch
-  setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 6 * 3600 * 1000); // then every 6h
+  if (!debugUpdater) {
+    setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 15000);           // once at launch
+    setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 6 * 3600 * 1000); // then every 6h
+  }
+}
+
+function checkForUpdate(manual) {
+  if (!autoUpdater) return publicUpdateState();
+  if (updateState.phase === 'checking' || updateState.phase === 'downloading' || updateState.phase === 'ready') return publicUpdateState();
+  updateState.manual = !!manual;
+  autoUpdater.checkForUpdates().catch(() => {}); // outcome arrives via the events above
+  return publicUpdateState();
+}
+
+function installUpdate() {
+  if (!autoUpdater || updateState.phase !== 'ready') return;
+  quitting = true;
+  // Silent install + relaunch: no installer window, the app comes back on the new version by itself.
+  // (If a recording is running, before-quit finalizes it first.)
+  autoUpdater.quitAndInstall(true, true);
 }
 
 function trayUpdateItem() {
-  if (!app.isPackaged) return { label: `v${app.getVersion()} (dev — updates off)`, enabled: false };
-  if (!autoUpdater) return { label: 'Updater unavailable', enabled: false };
-  if (updateState.downloaded) return { label: `Restart & update to v${updateState.downloaded}`, click: () => autoUpdater.quitAndInstall() };
-  if (updateState.checking) return { label: updateState.available ? `Downloading v${updateState.available}…` : 'Checking for updates…', enabled: false };
-  return { label: `Check for updates (v${app.getVersion()})`, click: () => { updateState.manual = true; autoUpdater.checkForUpdates().catch(() => {}); } };
+  if (!autoUpdater) return { label: `v${app.getVersion()} (dev — updates off)`, enabled: false };
+  switch (updateState.phase) {
+    case 'ready': return { label: `Restart & update to v${updateState.downloaded}`, click: installUpdate };
+    case 'downloading': return { label: `Downloading v${updateState.available}… ${updateState.progress}%`, enabled: false };
+    case 'checking': return { label: 'Checking for updates…', enabled: false };
+    default: return { label: `Check for updates (v${app.getVersion()})`, click: () => checkForUpdate(true) };
+  }
 }
 
 // ---- Mudfish integration: its desktop client is a local web dashboard; host it in-app. ----
@@ -979,6 +1026,34 @@ app.whenReady().then(async () => {
           })`);
           log('bg test (hidden 5s): ' + JSON.stringify(bg) + ' — expect ticks≈50 unthrottled, ≈5 throttled');
           win.show();
+        }
+        if (process.env.GBF_DEBUG_UPDATER) {
+          // Drives the in-client Updates UI against the LIVE GitHub Releases feed. autoDownload off:
+          // detection is real, the 78 MB download/progress/ready steps are simulated via events.
+          // Must be electron-updater's own SemVer class (it bundles a different semver than the top-level one).
+          const SemVer = autoUpdater.currentVersion.constructor;
+          const parse = (v) => new SemVer(v);
+          const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+          autoUpdater.autoDownload = false;
+          const ui = () => sideView.webContents.executeJavaScript(`({
+            status: document.querySelector('#upd-status').textContent, version: document.querySelector('#upd-version').textContent,
+            checkDisabled: document.querySelector('#upd-check').disabled,
+            install: document.querySelector('#upd-install').classList.contains('hidden') ? null : document.querySelector('#upd-install').textContent,
+            banner: document.querySelector('#update-banner').classList.contains('hidden') ? null : document.querySelector('#ub-text').textContent,
+            bannerBtn: !document.querySelector('#ub-install').classList.contains('hidden'), bar: document.querySelector('#ub-bar i').style.width,
+            railDot: document.body.classList.contains('update-ready') })`);
+          const waitPhase = async (want) => { for (let i = 0; i < 80; i++) { if (want.includes(updateState.phase)) break; await sleep(250); } return updateState.phase; };
+          const clickCheck = async () => { await sideView.webContents.executeJavaScript(`document.querySelector('#upd-check').click(); true`); await sleep(50); updateState.manual = false; };
+          await sideView.webContents.executeJavaScript(`document.querySelector('[data-tab=settings]').click(); true`);
+          log('UPD initial: ' + JSON.stringify(await ui()));
+          autoUpdater.currentVersion = parse('9.9.9'); await clickCheck();
+          log(`UPD pretend v9.9.9 → phase=${await waitPhase(['uptodate', 'error'])} err=${updateState.error} ui=` + JSON.stringify(await ui()));
+          autoUpdater.currentVersion = parse('0.1.0'); await clickCheck();
+          log(`UPD pretend v0.1.0 → phase=${await waitPhase(['downloading', 'error'])} available=${updateState.available} err=${updateState.error} ui=` + JSON.stringify(await ui()));
+          autoUpdater.emit('download-progress', { percent: 42.7 }); await sleep(300);
+          log('UPD simulated 42.7% ui=' + JSON.stringify(await ui()) + ' tray=' + JSON.stringify(trayUpdateItem().label));
+          autoUpdater.emit('update-downloaded', { version: updateState.available }); await sleep(300);
+          log('UPD simulated downloaded ui=' + JSON.stringify(await ui()) + ' tray=' + JSON.stringify(trayUpdateItem().label));
         }
         if (process.env.GBF_DEBUG_RAIL) {
           const snap = async (label) => {

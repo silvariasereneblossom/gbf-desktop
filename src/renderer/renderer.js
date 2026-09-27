@@ -307,6 +307,41 @@ $('#ar-pausefa').onchange = e => saveAutoRefresh({ pauseDuringFA: e.target.check
 $('#btn-newwin').onclick = () => gbf.newGameWindow();
 $('#btn-tile').onclick = () => gbf.tileWindows();
 
+// ---------- updates (GitHub Releases via electron-updater in main) ----------
+let updS = null;
+const ago = (t) => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`; };
+function renderUpdate() {
+  if (!updS) return;
+  const s = updS, st = $('#upd-status');
+  $('#upd-version').textContent = 'v' + s.current;
+  st.classList.toggle('err', s.phase === 'error');
+  st.textContent = ({
+    disabled: 'Development build — updates are off here (installed copies update normally).',
+    checking: 'Checking GitHub for updates…',
+    downloading: `Downloading v${s.available}… ${s.progress}%`,
+    ready: `v${s.downloaded} is downloaded and ready to install.`,
+    uptodate: `Up to date${s.lastChecked ? ' · checked ' + ago(s.lastChecked) : ''}.`,
+    error: `Couldn't check for updates: ${s.error}`
+  })[s.phase] || (s.enabled ? 'Not checked yet this session.' : '');
+  $('#upd-check').disabled = !s.enabled || ['checking', 'downloading', 'ready'].includes(s.phase);
+  $('#upd-install').classList.toggle('hidden', s.phase !== 'ready');
+  $('#upd-install').textContent = `Restart & update to v${s.downloaded || ''}`;
+  const show = s.phase === 'downloading' || s.phase === 'ready';
+  $('#update-banner').classList.toggle('hidden', !show);
+  if (show) {
+    $('#ub-text').textContent = s.phase === 'ready' ? `⬆ v${s.downloaded} is ready to install` : `⬇ Downloading update v${s.available}… ${s.progress}%`;
+    $('#ub-install').classList.toggle('hidden', s.phase !== 'ready');
+    $('#ub-bar i').style.width = (s.phase === 'ready' ? 100 : s.progress) + '%';
+  }
+  document.body.classList.toggle('update-ready', s.phase === 'ready');
+}
+$('#upd-check').onclick = async () => { updS = await gbf.update.check(); renderUpdate(); };
+$('#upd-install').onclick = () => gbf.update.install();
+$('#ub-install').onclick = () => gbf.update.install();
+$('#upd-notes').onclick = (e) => { e.preventDefault(); if (updS) gbf.openExternal(updS.releasesUrl); };
+gbf.on('update-state', (s) => { updS = s; renderUpdate(); });
+setInterval(() => { if (updS && updS.phase === 'uptodate') renderUpdate(); }, 60000); // keep "checked N min ago" fresh
+
 // ---------- recording ----------
 let recS = { active: false, stopping: false, startedAt: 0, bytes: 0 };
 function renderRec() {
@@ -436,4 +471,5 @@ $('#btn-data-folder').onclick = () => gbf.openDataFolder();
   $('#auto-accept').checked = !!settings.autoEquipAccepted;
   renderDailies(); renderBookmarks(); renderSaved(); renderSettings(); tickReset(); refreshDeck(); renderMudfish();
   recS = await gbf.rec.state(); renderRec();
+  updS = await gbf.update.state(); renderUpdate();
 })();
