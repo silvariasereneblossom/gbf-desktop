@@ -976,6 +976,24 @@ app.whenReady().then(async () => {
           log('bg test (hidden 5s): ' + JSON.stringify(bg) + ' — expect ticks≈50 unthrottled, ≈5 throttled');
           win.show();
         }
+        if (process.env.GBF_DEBUG_LAYOUT) {
+          // Sidebar geometry: every topbar button must sit inside the sidebar; checklist checkboxes must be box-sized.
+          await sideView.webContents.executeJavaScript(`document.querySelector('[data-tab=dailies]').click(); document.querySelector('#btn-rec').textContent = '● 12:34'; true`);
+          for (const width of [340, 260]) {
+            store.save({ sidebarWidth: width }); layout();
+            await new Promise(r => setTimeout(r, 400));
+            const g = await sideView.webContents.executeJavaScript(`(() => {
+              const vw = document.documentElement.clientWidth;
+              const btns = [...document.querySelectorAll('.topbar button')].map(b => { const r = b.getBoundingClientRect(); return { t: b.textContent.trim(), right: Math.round(r.right), top: Math.round(r.top), visible: r.right <= vw && r.width > 0 }; });
+              const li = document.querySelector('#dailies li');
+              const cb = li && li.querySelector('input[type=checkbox]'), lb = li && li.querySelector('label');
+              return { vw, hidden: btns.filter(b => !b.visible).map(b => b.t), rows: [...new Set(btns.map(b => b.top))].length, topbarH: Math.round(document.querySelector('.topbar').getBoundingClientRect().height),
+                       checkboxW: cb && Math.round(cb.getBoundingClientRect().width), labelX: lb && Math.round(lb.getBoundingClientRect().left), labelLines: lb && Math.round(lb.getBoundingClientRect().height / parseFloat(getComputedStyle(lb).lineHeight || 16)) };
+            })()`);
+            log(`LAYOUT @${width}px: ` + JSON.stringify(g));
+          }
+          store.save({ sidebarWidth: 340 }); layout();
+        }
         if (process.env.GBF_DEBUG_REC) {
           store.save({ recording: { ...store.load().recording, folder: path.join(dir, 'rec') } }); // never the real Videos folder
           const w = await ensureRecorder();

@@ -11,12 +11,14 @@ button { background: var(--panel2); border: 1px solid var(--line); border-radius
 button:hover { border-color: var(--accent); }
 button.ghost { background: transparent; }
 input, select { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; width: 100%; }
+/* Checkboxes/radios must not inherit the 100% text-input width (it broke every checklist row). */
+input[type=checkbox], input[type=radio] { width: auto; flex: 0 0 auto; padding: 0; margin: 0 4px 0 2px; }
 input.num { width: 64px; }
 input.narrow { width: 40%; }
 a { color: var(--accent2); }
 hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
 
-.topbar { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: var(--panel); border-bottom: 1px solid var(--line); -webkit-app-region: drag; }
+.topbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 8px 10px; background: var(--panel); border-bottom: 1px solid var(--line); -webkit-app-region: drag; }
 .topbar button { -webkit-app-region: no-drag; padding: 2px 7px; }
 .brand { font-weight: 700; letter-spacing: .5px; color: var(--accent); }
 .brand span { color: var(--muted); font-weight: 400; margin-left: 2px; }
@@ -27,7 +29,10 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
 .resetbox .lbl { color: var(--muted); margin-right: 6px; font-size: 11px; text-transform: uppercase; }
 .resetbox b { font-variant-numeric: tabular-nums; }
 .resetbox.soon b { color: var(--bad); }
-.winbtns { display: flex; gap: 4px; }
+/* Toolbar gets its own full-width row under brand/ping/reset; buttons share it and wrap if the
+   sidebar is narrow, so nothing can be pushed off-screen. */
+.winbtns { display: flex; flex-wrap: wrap; gap: 4px; flex: 1 0 100%; }
+.winbtns button { flex: 1 1 auto; min-width: 28px; padding: 3px 4px; }
 #btn-rec { color: var(--muted); font-variant-numeric: tabular-nums; }
 #btn-rec.on { color: #fff; background: var(--bad); border-color: var(--bad); animation: recpulse 1.6s ease-in-out infinite; }
 #btn-rec.saving { color: var(--accent); border-color: var(--accent); }
