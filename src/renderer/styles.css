@@ -33,6 +33,17 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
    sidebar is narrow, so nothing can be pushed off-screen. */
 .winbtns { display: flex; flex-wrap: wrap; gap: 4px; flex: 1 0 100%; }
 .winbtns button { flex: 1 1 auto; min-width: 28px; padding: 3px 4px; }
+/* Collapsed sidebar = a thin rail; everything else hides, the whole rail is the expand button. */
+#rail-expand { display: none; }
+body.collapsed > *:not(#rail-expand) { display: none !important; }
+body.collapsed #rail-expand {
+  display: flex; flex-direction: column; align-items: center; gap: 10px; position: fixed; inset: 0;
+  padding: 12px 0 0; border: 0; border-right: 1px solid var(--line); border-radius: 0;
+  background: var(--panel); color: var(--muted); font-size: 16px; line-height: 1; cursor: pointer;
+}
+body.collapsed #rail-expand:hover { background: var(--panel2); color: var(--accent); }
+#rail-expand .rail-rec { display: none; color: var(--bad); font-size: 11px; animation: recpulse 1.6s ease-in-out infinite; }
+body.recording #rail-expand .rail-rec { display: block; }
 #btn-rec { color: var(--muted); font-variant-numeric: tabular-nums; }
 #btn-rec.on { color: #fff; background: var(--bad); border-color: var(--bad); animation: recpulse 1.6s ease-in-out infinite; }
 #btn-rec.saving { color: var(--accent); border-color: var(--accent); }

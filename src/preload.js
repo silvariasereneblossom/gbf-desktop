@@ -56,7 +56,7 @@ contextBridge.exposeInMainWorld('gbf', {
     remove: (code) => ipcRenderer.invoke('teams:remove', code)
   },
   on: (channel, fn) => {
-    const ok = ['dailies-reset', 'game-url', 'settings-changed', 'ping', 'mudfish-up', 'rec-state'];
+    const ok = ['dailies-reset', 'game-url', 'settings-changed', 'ping', 'mudfish-up', 'rec-state', 'sidebar-state'];
     if (ok.includes(channel)) ipcRenderer.on(channel, (_e, ...a) => fn(...a));
   }
 });

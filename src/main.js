@@ -86,13 +86,14 @@ async function logMobageCookies() {
 }
 
 // ---------- layout ----------
+// Hidden sidebar collapses to a thin clickable rail (never to nothing) so there's always a way back.
+const SIDEBAR_RAIL = 18;
 function layout() {
   if (!win) return;
   const { width, height } = win.getContentBounds();
   const s = store.load();
-  const sw = s.sidebarVisible ? s.sidebarWidth : 0;
+  const sw = s.sidebarVisible ? s.sidebarWidth : SIDEBAR_RAIL;
   sideView.setBounds({ x: 0, y: 0, width: sw, height });
-  sideView.setVisible(s.sidebarVisible);
   const avail = Math.max(0, width - sw);
   // SkyLeap layout scales the game to the view width — allow pinning it (centered) so it stays sane.
   const want = s.skyleap && s.skyleap.enabled && s.skyleap.width > 0 ? Math.min(s.skyleap.width, avail) : avail;
@@ -270,6 +271,8 @@ function toggleSidebar() {
   const s = store.load();
   store.save({ sidebarVisible: !s.sidebarVisible });
   layout();
+  sendSide('sidebar-state', !s.sidebarVisible);
+  ipcMain.emit('tray:rebuild');
 }
 
 // ---------- tray ----------
@@ -287,6 +290,7 @@ function createTray() {
       { label: pending.length ? `${pending.length} dailies left` : 'All dailies done ✓', enabled: false },
       ...pending.slice(0, 6).map(d => ({ label: `   → ${d.label}`, click: () => navigate(d.hash) })),
       { type: 'separator' },
+      { label: 'Show sidebar (Ctrl+B)', type: 'checkbox', checked: !!s.sidebarVisible, click: () => { showWindow(); toggleSidebar(); } },
       { label: 'New game window', click: openGameWindow },
       rec.active
         ? { label: rec.stopping ? 'Saving recording…' : '■ Stop recording', enabled: !rec.stopping, click: stopRecording }
@@ -975,6 +979,31 @@ app.whenReady().then(async () => {
           })`);
           log('bg test (hidden 5s): ' + JSON.stringify(bg) + ' — expect ticks≈50 unthrottled, ≈5 throttled');
           win.show();
+        }
+        if (process.env.GBF_DEBUG_RAIL) {
+          const snap = async (label) => {
+            const dom = await sideView.webContents.executeJavaScript(`(() => {
+              const r = document.querySelector('#rail-expand').getBoundingClientRect();
+              return { collapsed: document.body.classList.contains('collapsed'), railW: Math.round(r.width), railH: Math.round(r.height),
+                       topbarShown: getComputedStyle(document.querySelector('.topbar')).display !== 'none',
+                       recDot: getComputedStyle(document.querySelector('.rail-rec')).display !== 'none' };
+            })()`);
+            log(`RAIL ${label}: side=${sideView.getBounds().width}px gameX=${gameView.getBounds().x} saved=${store.load().sidebarVisible} ` + JSON.stringify(dom));
+          };
+          await snap('start');
+          await sideView.webContents.executeJavaScript(`document.querySelector('#btn-hide').click(); true`);
+          await new Promise(r => setTimeout(r, 400)); await snap('after ⇤ hide');
+          await sideView.webContents.executeJavaScript(`recS = { active: true, startedAt: Date.now(), bytes: 0 }; renderRec(); true`);
+          await new Promise(r => setTimeout(r, 200)); await snap('collapsed + recording');
+          await sideView.webContents.executeJavaScript(`recS = { active: false }; renderRec(); true`);
+          await sideView.webContents.executeJavaScript(`document.querySelector('#rail-expand').click(); true`);
+          await new Promise(r => setTimeout(r, 400)); await snap('after rail click');
+          // Ctrl+B typed into the sidebar itself (not the game view).
+          sideView.webContents.focus();
+          for (const type of ['keyDown', 'keyUp']) sideView.webContents.sendInputEvent({ type, keyCode: 'B', modifiers: ['control'] });
+          await new Promise(r => setTimeout(r, 400)); await snap('after Ctrl+B in sidebar');
+          for (const type of ['keyDown', 'keyUp']) sideView.webContents.sendInputEvent({ type, keyCode: 'B', modifiers: ['control'] });
+          await new Promise(r => setTimeout(r, 400)); await snap('after Ctrl+B again');
         }
         if (process.env.GBF_DEBUG_LAYOUT) {
           // Sidebar geometry: every topbar button must sit inside the sidebar; checklist checkboxes must be box-sized.

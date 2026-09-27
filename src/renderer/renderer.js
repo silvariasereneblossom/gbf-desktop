@@ -14,6 +14,13 @@ $('#btn-reload').onclick = () => gbf.nav.reload();
 $('#btn-zoom-in').onclick = () => gbf.nav.zoom(+0.5);
 $('#btn-zoom-out').onclick = () => gbf.nav.zoom(-0.5);
 $('#btn-hide').onclick = () => gbf.toggleSidebar();
+$('#rail-expand').onclick = () => gbf.toggleSidebar();
+const applySidebarState = (visible) => document.body.classList.toggle('collapsed', !visible);
+gbf.on('sidebar-state', applySidebarState);
+// Ctrl+B also works while focus is in the sidebar/rail (the game view has its own handler).
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'b') { e.preventDefault(); gbf.toggleSidebar(); }
+});
 $$('[data-go]').forEach(b => b.addEventListener('click', () => gbf.nav.go(b.dataset.go)));
 document.addEventListener('click', (e) => {
   const a = e.target.closest('[data-ext]');
@@ -303,6 +310,7 @@ $('#btn-tile').onclick = () => gbf.tileWindows();
 // ---------- recording ----------
 let recS = { active: false, stopping: false, startedAt: 0, bytes: 0 };
 function renderRec() {
+  document.body.classList.toggle('recording', !!recS.active);
   const b = $('#btn-rec');
   b.classList.toggle('on', recS.active && !recS.stopping);
   b.classList.toggle('saving', !!recS.stopping);
@@ -424,6 +432,7 @@ $('#btn-data-folder').onclick = () => gbf.openDataFolder();
 // ---------- boot ----------
 (async () => {
   settings = await gbf.settings.get();
+  applySidebarState(settings.sidebarVisible !== false);
   $('#auto-accept').checked = !!settings.autoEquipAccepted;
   renderDailies(); renderBookmarks(); renderSaved(); renderSettings(); tickReset(); refreshDeck(); renderMudfish();
   recS = await gbf.rec.state(); renderRec();

@@ -7,6 +7,8 @@
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+<!-- Shown only when the sidebar is collapsed: the whole thin rail is one "bring it back" button. -->
+<button id="rail-expand" title="Show sidebar (Ctrl+B)"><span class="rail-chev">›</span><span class="rail-rec" title="Recording">●</span></button>
 <header class="topbar">
   <div class="brand">GBF<span>desktop</span></div>
   <div class="resetbox" id="pingbox" title="Latency to game.granbluefantasy.jp through the game session (proxy included)"><span class="lbl">ping</span><b id="ping-ms">—</b></div>
@@ -19,7 +21,7 @@
     <button id="btn-reload" title="Reload game (F5)">⟳</button>
     <button id="btn-zoom-out" title="Zoom out (Ctrl -)">−</button>
     <button id="btn-zoom-in" title="Zoom in (Ctrl +)">+</button>
-    <button id="btn-hide" title="Hide sidebar (Ctrl B)">⇤</button>
+    <button id="btn-hide" title="Hide sidebar (Ctrl+B) — click the thin rail on the left to bring it back">⇤</button>
   </div>
 </header>
 
@@ -180,7 +182,7 @@
     <div class="row gap"><button id="btn-data-folder" class="ghost">Open data folder (settings, nav.log)</button></div>
     <p class="hint">Login popups (Mobage, Google, Yahoo, DMM…) open inside the app and share the game's cookie jar. If login loops, clear cookies and try again.</p>
     <hr>
-    <p class="hint">Shortcuts: F5 reload · Ctrl+B sidebar · Ctrl +/−/0 zoom · Ctrl+Shift+G show window from anywhere.</p>
+    <p class="hint">Shortcuts: F5 reload · F9 record · Ctrl+B hide/show sidebar (hidden = thin rail on the left; click it to bring the sidebar back — also in the tray menu) · Ctrl +/−/0 zoom · Ctrl+Shift+G show window from anywhere.</p>
     <p class="hint">Game data & team art © Cygames. Team data from <a href="#" data-ext="https://granblue.team">granblue.team</a> (hensei-api).</p>
   </section>
 </main>
