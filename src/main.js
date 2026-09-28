@@ -1046,14 +1046,20 @@ app.whenReady().then(async () => {
           const clickCheck = async () => { await sideView.webContents.executeJavaScript(`document.querySelector('#upd-check').click(); true`); await sleep(50); updateState.manual = false; };
           await sideView.webContents.executeJavaScript(`document.querySelector('[data-tab=settings]').click(); true`);
           log('UPD initial: ' + JSON.stringify(await ui()));
-          autoUpdater.currentVersion = parse('9.9.9'); await clickCheck();
-          log(`UPD pretend v9.9.9 → phase=${await waitPhase(['uptodate', 'error'])} err=${updateState.error} ui=` + JSON.stringify(await ui()));
-          autoUpdater.currentVersion = parse('0.1.0'); await clickCheck();
-          log(`UPD pretend v0.1.0 → phase=${await waitPhase(['downloading', 'error'])} available=${updateState.available} err=${updateState.error} ui=` + JSON.stringify(await ui()));
-          autoUpdater.emit('download-progress', { percent: 42.7 }); await sleep(300);
-          log('UPD simulated 42.7% ui=' + JSON.stringify(await ui()) + ' tray=' + JSON.stringify(trayUpdateItem().label));
-          autoUpdater.emit('update-downloaded', { version: updateState.available }); await sleep(300);
-          log('UPD simulated downloaded ui=' + JSON.stringify(await ui()) + ' tray=' + JSON.stringify(trayUpdateItem().label));
+          if (process.env.GBF_DEBUG_UPDATER_FROM) {
+            // Single real check as if installed at the given version (e.g. what a user on 0.1.2 sees).
+            autoUpdater.currentVersion = parse(process.env.GBF_DEBUG_UPDATER_FROM); await clickCheck();
+            log(`UPD as v${process.env.GBF_DEBUG_UPDATER_FROM} → phase=${await waitPhase(['downloading', 'uptodate', 'error'])} available=${updateState.available} err=${updateState.error} ui=` + JSON.stringify(await ui()));
+          } else {
+            autoUpdater.currentVersion = parse('9.9.9'); await clickCheck();
+            log(`UPD pretend v9.9.9 → phase=${await waitPhase(['uptodate', 'error'])} err=${updateState.error} ui=` + JSON.stringify(await ui()));
+            autoUpdater.currentVersion = parse('0.1.0'); await clickCheck();
+            log(`UPD pretend v0.1.0 → phase=${await waitPhase(['downloading', 'error'])} available=${updateState.available} err=${updateState.error} ui=` + JSON.stringify(await ui()));
+            autoUpdater.emit('download-progress', { percent: 42.7 }); await sleep(300);
+            log('UPD simulated 42.7% ui=' + JSON.stringify(await ui()) + ' tray=' + JSON.stringify(trayUpdateItem().label));
+            autoUpdater.emit('update-downloaded', { version: updateState.available }); await sleep(300);
+            log('UPD simulated downloaded ui=' + JSON.stringify(await ui()) + ' tray=' + JSON.stringify(trayUpdateItem().label));
+          }
         }
         if (process.env.GBF_DEBUG_RAIL) {
           const snap = async (label) => {
