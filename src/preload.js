@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('gbf', {
     currentUrl: () => ipcRenderer.invoke('nav:currentUrl')
   },
   toggleSidebar: () => ipcRenderer.invoke('app:toggleSidebar'),
+  sidebarVisible: () => ipcRenderer.invoke('app:sidebarVisible'),
   openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
   openCurrentExternal: () => ipcRenderer.invoke('app:openCurrentExternal'),
   clearSession: () => ipcRenderer.invoke('session:clear'),

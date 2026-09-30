@@ -467,7 +467,7 @@ $('#btn-data-folder').onclick = () => gbf.openDataFolder();
 // ---------- boot ----------
 (async () => {
   settings = await gbf.settings.get();
-  applySidebarState(settings.sidebarVisible !== false);
+  applySidebarState(await gbf.sidebarVisible()); // per window: main = saved setting, ⧉ windows start collapsed
   $('#auto-accept').checked = !!settings.autoEquipAccepted;
   renderDailies(); renderBookmarks(); renderSaved(); renderSettings(); tickReset(); refreshDeck(); renderMudfish();
   recS = await gbf.rec.state(); renderRec();

@@ -85,102 +85,150 @@ async function logMobageCookies() {
   } catch (e) { navLog('cookies-error', e.message); }
 }
 
+// ---------- shells: every game window (main + ⧉ extras) = BaseWindow + sidebar view + game view ----------
+// `win` / `sideView` / `gameView` stay as aliases of the MAIN shell (tray, reminders, account switch).
+const shells = new Set();
+let mainShell = null;
+const alive = (v) => v && !v.webContents.isDestroyed();
+// Which shell does an IPC sender (sidebar) or game webContents belong to? Falls back to main.
+function shellOf(wc) {
+  for (const sh of shells) {
+    if ((alive(sh.sideView) && sh.sideView.webContents === wc) || (alive(sh.gameView) && sh.gameView.webContents === wc)) return sh;
+  }
+  return mainShell;
+}
+// Main window's sidebar state is persisted; extra windows keep theirs in memory (start collapsed).
+const sidebarShown = (sh) => (sh.main ? store.load().sidebarVisible !== false : !!sh.sidebarVisible);
+
 // ---------- layout ----------
 // Hidden sidebar collapses to a thin clickable rail (never to nothing) so there's always a way back.
 const SIDEBAR_RAIL = 18;
-function layout() {
-  if (!win) return;
-  const { width, height } = win.getContentBounds();
+function layoutShell(sh) {
+  if (!sh || !sh.win || sh.win.isDestroyed() || !alive(sh.sideView) || !alive(sh.gameView)) return;
+  const { width, height } = sh.win.getContentBounds();
   const s = store.load();
-  const sw = s.sidebarVisible ? s.sidebarWidth : SIDEBAR_RAIL;
-  sideView.setBounds({ x: 0, y: 0, width: sw, height });
+  const sw = sidebarShown(sh) ? s.sidebarWidth : SIDEBAR_RAIL;
+  sh.sideView.setBounds({ x: 0, y: 0, width: sw, height });
   const avail = Math.max(0, width - sw);
   // SkyLeap layout scales the game to the view width — allow pinning it (centered) so it stays sane.
   const want = s.skyleap && s.skyleap.enabled && s.skyleap.width > 0 ? Math.min(s.skyleap.width, avail) : avail;
-  gameView.setBounds({ x: sw + Math.floor((avail - want) / 2), y: 0, width: want, height });
+  sh.gameView.setBounds({ x: sw + Math.floor((avail - want) / 2), y: 0, width: want, height });
+}
+function layout() { for (const sh of shells) layoutShell(sh); }
+
+// App-wide events go to every sidebar; per-window events (game-url, sidebar-state) use sendSideTo.
+function sendSide(channel, payload) { for (const sh of shells) sendSideTo(sh, channel, payload); }
+function sendSideTo(sh, channel, payload) {
+  if (sh && alive(sh.sideView)) sh.sideView.webContents.send(channel, payload);
 }
 
-function sendSide(channel, payload) {
-  if (sideView && !sideView.webContents.isDestroyed()) sideView.webContents.send(channel, payload);
+function focusShell(sh) {
+  if (!sh || !sh.win || sh.win.isDestroyed()) return;
+  if (sh.win.isMinimized()) sh.win.restore();
+  sh.win.show();
+  sh.win.focus();
 }
 
-function navigate(hash) {
-  if (!gameView) return;
-  showWindow();
+function navigateIn(sh, hash) {
+  if (!sh || !alive(sh.gameView)) return;
+  const gv = sh.gameView;
   const url = hash && hash.startsWith('http') ? hash : GAME_URL + (hash || '');
-  const cur = gameView.webContents.getURL();
+  const cur = gv.webContents.getURL();
   if (cur.startsWith(GAME_URL) && hash && hash.startsWith('#')) {
     // In-app hash navigation keeps the game's SPA state.
-    gameView.webContents.executeJavaScript(`location.hash = ${JSON.stringify(hash)}`).catch(() => {});
+    gv.webContents.executeJavaScript(`location.hash = ${JSON.stringify(hash)}`).catch(() => {});
   } else {
-    gameView.webContents.loadURL(url);
+    gv.webContents.loadURL(url);
   }
 }
+// Tray/reminder navigation: always the main window, brought to front.
+function navigate(hash) { showWindow(); navigateIn(mainShell, hash); }
 
-function showWindow() {
-  if (!win) return;
-  if (win.isMinimized()) win.restore();
-  win.show();
-  win.focus();
-}
+function showWindow() { focusShell(mainShell); }
 
 // ---------- window ----------
-function createWindow() {
+// Builds one game window: sidebar view + game view in a BaseWindow. Main window = the tray-backed
+// one (closes to tray, persists its sidebar state); extras are the ⧉ multiwindow windows.
+function createShell({ main = false } = {}) {
   const icon = ensureIcon();
-  win = new BaseWindow({
-    width: 1400, height: 900, minWidth: 700, minHeight: 500,
-    title: 'Granblue Fantasy', icon, backgroundColor: '#0b0d12', show: false
-  });
-  win.setMenuBarVisibility(false);
+  const w = new BaseWindow(main
+    ? { width: 1400, height: 900, minWidth: 700, minHeight: 500, title: 'Granblue Fantasy', icon, backgroundColor: '#0b0d12', show: false }
+    : { width: 700, height: 900, minWidth: 360, minHeight: 400, title: 'Granblue Fantasy', icon, backgroundColor: '#0b0d12' });
+  w.setMenuBarVisibility(false);
+  const sh = { main, win: w, sideView: null, gameView: null, gameWcId: null, sidebarVisible: false };
+  shells.add(sh);
+  if (main) { mainShell = sh; win = w; }
 
-  sideView = new WebContentsView({
+  sh.sideView = new WebContentsView({
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, backgroundThrottling: false }
   });
-  win.contentView.addChildView(sideView);
-  createGameView();
+  if (main) sideView = sh.sideView;
+  w.contentView.addChildView(sh.sideView);
+  createGameView(sh, main ? GAME_URL : GAME_URL + '#mypage');
 
-  if (process.env.GBF_DEBUG_SHOT) {
-    sideView.webContents.on('console-message', (_e, level, msg, line, src) =>
+  if (process.env.GBF_DEBUG_SHOT && main) {
+    sh.sideView.webContents.on('console-message', (_e, level, msg, line, src) =>
       fs.appendFileSync(path.join(process.env.GBF_DEBUG_SHOT, 'console.txt'), `[${level}] ${msg} (${src}:${line})\n`));
   }
-  sideView.webContents.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  sh.sideView.webContents.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 
-  // Mouse 4/5 on the main window: back / reload in the game view (guide: "Key/Mouse Bindings").
-  win.on('app-command', (e, cmd) => {
-    if (cmd === 'browser-backward') { gameView.webContents.navigationHistory.canGoBack() && gameView.webContents.navigationHistory.goBack(); e.preventDefault(); }
-    if (cmd === 'browser-forward') { gameView.webContents.reload(); e.preventDefault(); }
+  // Mouse 4/5: back / reload in this window's game view (guide: "Key/Mouse Bindings").
+  w.on('app-command', (e, cmd) => {
+    if (!alive(sh.gameView)) return;
+    const wc = sh.gameView.webContents;
+    if (cmd === 'browser-backward') { wc.navigationHistory.canGoBack() && wc.navigationHistory.goBack(); e.preventDefault(); }
+    if (cmd === 'browser-forward') { wc.reload(); e.preventDefault(); }
   });
 
-  win.on('resize', layout);
-  win.on('ready-to-show', () => { layout(); win.show(); });
-  setTimeout(() => { layout(); win.show(); }, 800); // BaseWindow doesn't emit ready-to-show; belt and braces.
+  const relayout = () => layoutShell(sh);
+  for (const ev of ['resize', 'maximize', 'unmaximize', 'restore']) w.on(ev, relayout);
 
-  win.on('close', (e) => {
-    if (!quitting && store.load().closeToTray) { e.preventDefault(); win.hide(); }
-  });
+  if (main) {
+    w.on('ready-to-show', () => { relayout(); w.show(); });
+    setTimeout(() => { relayout(); w.show(); }, 800); // BaseWindow doesn't emit ready-to-show; belt and braces.
+    w.on('close', (e) => {
+      if (!quitting && store.load().closeToTray) { e.preventDefault(); w.hide(); }
+    });
+  } else {
+    relayout();
+    w.on('closed', () => {
+      shells.delete(sh);
+      if (sh.gameWcId != null) gameContentsIds.delete(sh.gameWcId);
+      // A closed BaseWindow does NOT destroy its views' webContents — close them, or the game keeps
+      // running invisibly (audio, network, timers).
+      for (const v of [sh.sideView, sh.gameView]) { try { if (alive(v)) v.webContents.close(); } catch {} }
+      const i = gameWindows.indexOf(w); if (i >= 0) gameWindows.splice(i, 1);
+      if (store.load().multiwindow.autoTile) tileGameWindows();
+    });
+  }
+  return sh;
 }
 
-// Builds (or rebuilds) the game view against the ACTIVE account's session partition.
-function createGameView() {
+function createWindow() { createShell({ main: true }); }
+
+// Builds (or rebuilds) a shell's game view against the ACTIVE account's session partition.
+function createGameView(sh, startUrl = GAME_URL) {
   const partition = activePartition();
   setupGameSession(session.fromPartition(partition));
-  gameView = new WebContentsView({
+  const gv = new WebContentsView({
     // nodeIntegrationInSubFrames only makes the preload run in iframes too (Mobage frames); node stays off.
     // backgroundThrottling:false keeps game timers/XHR at full rate while hidden in the tray.
     webPreferences: { contextIsolation: true, nodeIntegration: false, nodeIntegrationInSubFrames: true, partition, preload: path.join(__dirname, 'game-preload.js'), backgroundThrottling: false }
   });
-  win.contentView.addChildView(gameView);
-  win.contentView.addChildView(sideView); // re-append: keeps the sidebar on top of the new view
+  sh.gameView = gv;
+  if (sh.main) gameView = gv;
+  sh.win.contentView.addChildView(gv);
+  sh.win.contentView.addChildView(sh.sideView); // re-append: keeps the sidebar on top of the new view
 
-  gameView.webContents.setUserAgent(gameUA());
+  gv.webContents.setUserAgent(gameUA());
   // Login flows (Mobage → Yahoo/Google/Twitter/Apple/DMM…) open popups and bounce through many hosts.
   // Keep every popup inside the app, in the same cookie jar, so the session lands in the game view.
   const popupOpts = { width: 560, height: 760, autoHideMenuBar: true, webPreferences: { partition, contextIsolation: true, nodeIntegration: false, nodeIntegrationInSubFrames: true, preload: path.join(__dirname, 'game-preload.js'), backgroundThrottling: false } };
-  gameView.webContents.setWindowOpenHandler(({ url }) => {
+  gv.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:\/\/(www\.)?(wiki\.)?gbf\.wiki|granblue\.team|twitter\.com\/intent|x\.com\/intent/.test(url)) { shell.openExternal(url); return { action: 'deny' }; }
     return { action: 'allow', overrideBrowserWindowOptions: popupOpts };
   });
-  gameView.webContents.on('did-create-window', (child) => {
+  gv.webContents.on('did-create-window', (child) => {
     child.webContents.setUserAgent(CHROME_UA);
     child.webContents.setWindowOpenHandler(() => ({ action: 'allow', overrideBrowserWindowOptions: popupOpts }));
     child.webContents.on('did-create-window', (gc) => gc.webContents.setUserAgent(CHROME_UA));
@@ -190,42 +238,42 @@ function createGameView() {
     // popup closed, reload once. Must be generous — the game exchanges the Mobage token with its
     // own server right after the popup closes, and reloading during that kills the login.
     child.on('closed', () => {
-      const alive = () => gameView && !gameView.webContents.isDestroyed();
-      if (!alive()) return;
-      navLog('popup-closed', gameView.webContents.getURL());
+      if (!alive(gv)) return;
+      navLog('popup-closed', gv.webContents.getURL());
       setTimeout(() => {
-        if (!alive()) return; // app may have quit / account switched during the grace period
-        const u = gameView.webContents.getURL();
-        if (/#authentication/.test(u)) { navLog('still-on-auth → reload', u); gameView.webContents.loadURL(GAME_URL); }
+        if (!alive(gv)) return; // app may have quit / account switched / window closed meanwhile
+        const u = gv.webContents.getURL();
+        if (/#authentication/.test(u)) { navLog('still-on-auth → reload', u); gv.webContents.loadURL(GAME_URL); }
       }, 15000);
     });
   });
-  gameView.webContents.on('did-navigate', (_e, url) => navLog('game', url));
-  gameView.webContents.on('did-navigate-in-page', (_e, url, isMain) => { navLog('game-hash', url); if (isMain) logMobageCookies(); });
-  gameView.webContents.on('did-redirect-navigation', (_e, url, _http, isMain) => navLog(isMain ? 'game-redirect' : 'frame-redirect', url));
-  gameView.webContents.on('did-frame-navigate', (_e, url, _code, _status, isMain) => { if (!isMain) navLog('frame', url); });
-  gameView.webContents.on('console-message', (_e, level, msg) => {
+  gv.webContents.on('did-navigate', (_e, url) => navLog('game', url));
+  gv.webContents.on('did-navigate-in-page', (_e, url, isMain) => { navLog('game-hash', url); if (isMain) logMobageCookies(); });
+  gv.webContents.on('did-redirect-navigation', (_e, url, _http, isMain) => navLog(isMain ? 'game-redirect' : 'frame-redirect', url));
+  gv.webContents.on('did-frame-navigate', (_e, url, _code, _status, isMain) => { if (!isMain) navLog('frame', url); });
+  gv.webContents.on('console-message', (_e, level, msg) => {
     if (level >= 2 || /gbfwrap|mobage|oauth|session|token|login|logout|jssdk|fedcm|postMessage/i.test(msg)) navLog(`console${level}`, msg);
   });
   // Persist cookies promptly (a hard kill before Chromium's periodic flush would lose the login).
   const flush = () => session.fromPartition(partition).cookies.flushStore().catch(() => {});
-  gameView.webContents.on('did-navigate', flush);
-  gameView.webContents.on('did-finish-load', flush);
-  gameView.webContents.on('did-navigate-in-page', (_e, url) => sendSide('game-url', url));
-  gameView.webContents.on('did-navigate', (_e, url) => sendSide('game-url', url));
-  gameView.webContents.on('before-input-event', (e, input) => {
+  gv.webContents.on('did-navigate', flush);
+  gv.webContents.on('did-finish-load', flush);
+  gv.webContents.on('did-navigate-in-page', (_e, url) => sendSideTo(sh, 'game-url', url));
+  gv.webContents.on('did-navigate', (_e, url) => sendSideTo(sh, 'game-url', url));
+  gv.webContents.on('before-input-event', (e, input) => {
     if (input.type !== 'keyDown') return;
     const ctrl = input.control || input.meta;
-    if (input.key === 'F5' || (ctrl && input.key.toLowerCase() === 'r')) { gameView.webContents.reload(); e.preventDefault(); }
-    if (input.key === 'F9' && !input.isAutoRepeat) { rec.active ? stopRecording() : startRecording(); e.preventDefault(); }
-    if (ctrl && input.key.toLowerCase() === 'b') { toggleSidebar(); e.preventDefault(); }
-    if (ctrl && (input.key === '=' || input.key === '+')) { zoom(+0.5); e.preventDefault(); }
-    if (ctrl && input.key === '-') { zoom(-0.5); e.preventDefault(); }
-    if (ctrl && input.key === '0') { gameView.webContents.setZoomLevel(0); e.preventDefault(); }
+    if (input.key === 'F5' || (ctrl && input.key.toLowerCase() === 'r')) { gv.webContents.reload(); e.preventDefault(); }
+    if (input.key === 'F9' && !input.isAutoRepeat) { rec.active ? stopRecording() : startRecording(sh); e.preventDefault(); }
+    if (ctrl && input.key.toLowerCase() === 'b') { toggleSidebar(sh); e.preventDefault(); }
+    if (ctrl && (input.key === '=' || input.key === '+')) { zoom(sh, +0.5); e.preventDefault(); }
+    if (ctrl && input.key === '-') { zoom(sh, -0.5); e.preventDefault(); }
+    if (ctrl && input.key === '0') { gv.webContents.setZoomLevel(0); e.preventDefault(); }
   });
 
-  gameContentsIds.add(gameView.webContents.id);
-  gameView.webContents.loadURL(GAME_URL);
+  sh.gameWcId = gv.webContents.id;
+  gameContentsIds.add(sh.gameWcId);
+  gv.webContents.loadURL(startUrl);
 }
 
 // Per-session network setup — must run once for every account partition we touch.
@@ -240,23 +288,25 @@ function setupGameSession(ses) {
   applyProxy(ses);
 }
 
+// Switches the MAIN window to another account (extra windows keep the account they opened with).
 function switchAccount(id) {
   const s = store.load();
   if (!s.accounts.some(a => a.id === id) || id === s.activeAccountId) return;
   store.save({ activeAccountId: id });
-  const old = gameView;
-  gameContentsIds.delete(old.webContents.id);
-  win.contentView.removeChildView(old);
+  const old = mainShell.gameView;
+  gameContentsIds.delete(mainShell.gameWcId);
+  mainShell.win.contentView.removeChildView(old);
   old.webContents.close();
-  createGameView();
-  layout();
+  createGameView(mainShell);
+  layoutShell(mainShell);
   navLog('account', 'switched to ' + id + ' (' + activePartition() + ')');
   sendSide('settings-changed');
 }
 
-function zoom(delta) {
-  const z = gameView.webContents.getZoomLevel() + delta;
-  gameView.webContents.setZoomLevel(Math.max(-3, Math.min(5, z)));
+function zoom(sh, delta) {
+  if (!sh || !alive(sh.gameView)) return;
+  const wc = sh.gameView.webContents;
+  wc.setZoomLevel(Math.max(-3, Math.min(5, wc.getZoomLevel() + delta)));
 }
 
 async function clearSession() {
@@ -264,15 +314,16 @@ async function clearSession() {
   await ses.clearStorageData();
   await ses.clearCache();
   await ses.cookies.flushStore().catch(() => {});
-  gameView.webContents.loadURL(GAME_URL);
+  // Every window logged in through that jar is now logged out — send them all back to the start.
+  for (const sh of shells) if (alive(sh.gameView) && sh.gameView.webContents.session === ses) sh.gameView.webContents.loadURL(GAME_URL);
 }
 
-function toggleSidebar() {
-  const s = store.load();
-  store.save({ sidebarVisible: !s.sidebarVisible });
-  layout();
-  sendSide('sidebar-state', !s.sidebarVisible);
-  ipcMain.emit('tray:rebuild');
+function toggleSidebar(sh = mainShell) {
+  if (!sh) return;
+  if (sh.main) { store.save({ sidebarVisible: !sidebarShown(sh) }); ipcMain.emit('tray:rebuild'); }
+  else sh.sidebarVisible = !sh.sidebarVisible;
+  layoutShell(sh);
+  sendSideTo(sh, 'sidebar-state', sidebarShown(sh));
 }
 
 // ---------- tray ----------
@@ -321,14 +372,17 @@ function wireIpc() {
   });
   ipcMain.handle('dailies:set', (_e, dailies) => { store.save({ dailies }); ipcMain.emit('tray:rebuild'); return dailies; });
   ipcMain.handle('reset:ms', () => msUntilReset());
-  ipcMain.handle('nav:go', (_e, hash) => navigate(hash));
-  ipcMain.handle('nav:currentUrl', () => (gameView ? gameView.webContents.getURL() : ''));
-  ipcMain.handle('nav:reload', () => gameView.webContents.reload());
-  ipcMain.handle('nav:back', () => gameView.webContents.navigationHistory.canGoBack() && gameView.webContents.navigationHistory.goBack());
-  ipcMain.handle('nav:zoom', (_e, d) => d === 0 ? gameView.webContents.setZoomLevel(0) : zoom(d));
-  ipcMain.handle('app:toggleSidebar', toggleSidebar);
+  // Sidebar actions target the game view in the SAME window as the sidebar that asked.
+  const gameWc = (e) => { const sh = shellOf(e.sender); return sh && alive(sh.gameView) ? sh.gameView.webContents : null; };
+  ipcMain.handle('nav:go', (e, hash) => navigateIn(shellOf(e.sender), hash));
+  ipcMain.handle('nav:currentUrl', (e) => { const wc = gameWc(e); return wc ? wc.getURL() : ''; });
+  ipcMain.handle('nav:reload', (e) => { const wc = gameWc(e); if (wc) wc.reload(); });
+  ipcMain.handle('nav:back', (e) => { const wc = gameWc(e); if (wc && wc.navigationHistory.canGoBack()) wc.navigationHistory.goBack(); });
+  ipcMain.handle('nav:zoom', (e, d) => { const sh = shellOf(e.sender); if (d === 0) { const wc = gameWc(e); if (wc) wc.setZoomLevel(0); } else zoom(sh, d); });
+  ipcMain.handle('app:toggleSidebar', (e) => toggleSidebar(shellOf(e.sender)));
+  ipcMain.handle('app:sidebarVisible', (e) => sidebarShown(shellOf(e.sender)));
   ipcMain.handle('app:openExternal', (_e, url) => shell.openExternal(url));
-  ipcMain.handle('app:openCurrentExternal', () => shell.openExternal(gameView.webContents.getURL()));
+  ipcMain.handle('app:openCurrentExternal', (e) => { const wc = gameWc(e); if (wc) shell.openExternal(wc.getURL()); });
   ipcMain.handle('session:clear', clearSession);
   ipcMain.handle('app:openDataFolder', () => shell.openPath(app.getPath('userData')));
   ipcMain.handle('app:newGameWindow', () => { openGameWindow(); });
@@ -345,7 +399,7 @@ function wireIpc() {
   ipcMain.handle('update:state', () => publicUpdateState());
   ipcMain.handle('update:check', () => checkForUpdate(true));
   ipcMain.handle('update:install', () => { installUpdate(); return publicUpdateState(); });
-  ipcMain.handle('rec:toggle', () => (rec.active ? stopRecording() : startRecording()));
+  ipcMain.handle('rec:toggle', (e) => (rec.active ? stopRecording() : startRecording(shellOf(e.sender))));
   ipcMain.handle('rec:state', () => recState());
   ipcMain.handle('rec:openFolder', () => { const d = recordingsDir(); fs.mkdirSync(d, { recursive: true }); return shell.openPath(d); });
   ipcMain.handle('accounts:switch', (_e, id) => { switchAccount(id | 0); return store.load(); });
@@ -410,26 +464,28 @@ function wireIpc() {
   });
   ipcMain.handle('skyleap:apply', (_e, skyleap) => {
     store.save({ skyleap: { ...store.load().skyleap, ...skyleap } });
-    gameView.webContents.setUserAgent(gameUA());
+    for (const sh of shells) if (alive(sh.gameView)) { sh.gameView.webContents.setUserAgent(gameUA()); sh.gameView.webContents.reload(); }
     layout();
-    gameView.webContents.reload();
     navLog('skyleap', `enabled=${store.load().skyleap.enabled} width=${store.load().skyleap.width}`);
     return store.load();
   });
   ipcMain.on('gbf:diag', (_e, kind, text) => navLog('diag-' + kind, text));
 
   // ---- party import (assisted + UI-level auto-equip) ----
-  ipcMain.handle('party:deck', () => {
-    const m = /#party\/(?:index|list_\w+|top|list|job)\/(?:pc\/)?(\d+)/.exec(gameView.webContents.getURL());
+  ipcMain.handle('party:deck', (e) => {
+    const wc = gameWc(e); if (!wc) return null;
+    const m = /#party\/(?:index|list_\w+|top|list|job)\/(?:pc\/)?(\d+)/.exec(wc.getURL());
     return m ? m[1] : null;
   });
   ipcMain.handle('party:slots', (_e, team, deck) => party.slots(team, deck));
-  ipcMain.handle('party:autoEquip', async (_e, slot) => {
+  ipcMain.handle('party:autoEquip', async (e, slot) => {
     if (!store.load().autoEquipAccepted) return { ok: false, message: 'auto-equip not enabled' };
-    showWindow();
+    const sh = shellOf(e.sender);
+    if (!sh || !alive(sh.gameView)) return { ok: false, message: 'game window closed' };
+    focusShell(sh);
     navLog('auto-equip', `${slot.kind} ${slot.label} ${slot.id}`);
     try {
-      const r = await gameView.webContents.executeJavaScript(party.autoEquipScript(slot), true);
+      const r = await sh.gameView.webContents.executeJavaScript(party.autoEquipScript(slot), true);
       navLog('auto-equip-result', JSON.stringify(r));
       return r;
     } catch (e) {
@@ -531,7 +587,7 @@ function startPingLoop() {
 }
 
 // ---- built-in recorder: tab-captures the GAME VIEW (video + its own audio) from a hidden window. ----
-const rec = { win: null, ready: null, active: false, stopping: false, out: null, file: '', bytes: 0, startedAt: 0, mime: '', quitAfter: false, watchdog: null };
+const rec = { win: null, ready: null, target: null, active: false, stopping: false, out: null, file: '', bytes: 0, startedAt: 0, mime: '', quitAfter: false, watchdog: null };
 
 function recordingsDir() {
   const f = (store.load().recording || {}).folder;
@@ -552,8 +608,9 @@ function ensureRecorder() {
   // Answer the recorder's getDisplayMedia() with the game view itself: tab capture of its frame,
   // audio from that frame only, and local echo so you keep hearing the game while recording.
   rec.win.webContents.session.setDisplayMediaRequestHandler((_req, callback) => {
-    if (!gameView || gameView.webContents.isDestroyed()) return callback({});
-    const frame = gameView.webContents.mainFrame;
+    const wc = rec.target; // the game webContents of the window recording was started from
+    if (!wc || wc.isDestroyed()) return callback({});
+    const frame = wc.mainFrame;
     const withAudio = (store.load().recording || {}).audio !== false;
     callback(withAudio ? { video: frame, audio: frame, enableLocalEcho: true } : { video: frame });
   });
@@ -562,8 +619,10 @@ function ensureRecorder() {
   return rec.ready;
 }
 
-async function startRecording() {
+async function startRecording(sh = mainShell) {
   if (rec.active || rec.stopping) return recState();
+  if (!sh || !alive(sh.gameView)) return recState();
+  rec.target = sh.gameView.webContents;
   const s = store.load().recording || {};
   try {
     const w = await ensureRecorder();
@@ -842,33 +901,13 @@ function installAutoRefresh(ses) {
 
 // Extra game window sharing the same session — enables the guide's multiwindow techniques
 // (second-window menuing, guarding, preloading, weaving). Same login, same cookies.
+// Same kind of window as the main one (sidebar + rail + game), just not tray-backed; it starts with
+// the sidebar collapsed to the rail since tiled columns are narrow. Cleanup lives in createShell.
 function openGameWindow() {
-  const partition = activePartition();
-  setupGameSession(session.fromPartition(partition));
-  const w = new BrowserWindow({
-    width: 700, height: 900, autoHideMenuBar: true, backgroundColor: '#0b0d12', icon: ensureIcon(),
-    webPreferences: { partition, contextIsolation: true, nodeIntegration: false, nodeIntegrationInSubFrames: true, preload: path.join(__dirname, 'game-preload.js'), backgroundThrottling: false }
-  });
-  w.webContents.setUserAgent(gameUA());
-  w.webContents.setWindowOpenHandler(({ url }) => {
-    if (/granbluefantasy\.jp|mobage\.jp|mbga\.jp|gree\.net|dena\.com/.test(url)) return { action: 'allow' };
-    shell.openExternal(url); return { action: 'deny' };
-  });
-  w.on('app-command', (e, cmd) => {
-    if (cmd === 'browser-backward') { w.webContents.navigationHistory.canGoBack() && w.webContents.navigationHistory.goBack(); e.preventDefault(); }
-    if (cmd === 'browser-forward') { w.webContents.reload(); e.preventDefault(); }
-  });
-  const wcId = w.webContents.id; // capture now — webContents is already destroyed inside 'closed'
-  gameContentsIds.add(wcId);
-  gameWindows.push(w);
-  w.on('closed', () => {
-    gameContentsIds.delete(wcId);
-    const i = gameWindows.indexOf(w); if (i >= 0) gameWindows.splice(i, 1);
-    if (store.load().multiwindow.autoTile) tileGameWindows();
-  });
-  w.loadURL(GAME_URL + '#mypage');
+  const sh = createShell({ main: false });
+  gameWindows.push(sh.win);
   if (store.load().multiwindow.autoTile) tileGameWindows();
-  return w;
+  return sh.win;
 }
 
 // ---- multiwindow auto-layout: tile main + extra game windows into equal columns (grid past 4),
@@ -1026,6 +1065,47 @@ app.whenReady().then(async () => {
           })`);
           log('bg test (hidden 5s): ' + JSON.stringify(bg) + ' — expect ticks≈50 unthrottled, ≈5 throttled');
           win.show();
+        }
+        if (process.env.GBF_DEBUG_MULTI) {
+          const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+          store.save({ recording: { ...store.load().recording, folder: path.join(dir, 'rec') } }); // never the real Videos folder
+          const w2 = openGameWindow();
+          const ex = [...shells].find(s => !s.main);
+          await sleep(3500); // extra sidebar + game load
+          const side = (sh, js) => sh.sideView.webContents.executeJavaScript(js);
+          const st = async (label) => {
+            const r = async (sh) => ({ side: sh.sideView.getBounds().width, gameX: sh.gameView.getBounds().x,
+              collapsed: await side(sh, `document.body.classList.contains('collapsed')`), hash: (sh.gameView.webContents.getURL().split('#')[1] || '') });
+            log(`MULTI ${label}: main=${JSON.stringify(await r(mainShell))} extra=${JSON.stringify(await r(ex))} shells=${shells.size}`);
+          };
+          await st('opened');
+          await side(ex, `document.querySelector('#rail-expand').click(); true`); await sleep(400);
+          await st('extra rail clicked');
+          const seen = { main: [], extra: [] };
+          const rec1 = (k) => (_e, url, isMain) => { if (isMain !== false) seen[k].push(url.split('#')[1] || ''); };
+          const lm = rec1('main'), le = rec1('extra');
+          mainShell.gameView.webContents.on('did-navigate-in-page', lm); ex.gameView.webContents.on('did-navigate-in-page', le);
+          await side(ex, `document.querySelector('[data-go="#quest"]').click(); true`); await sleep(1200);
+          mainShell.gameView.webContents.removeListener('did-navigate-in-page', lm); ex.gameView.webContents.removeListener('did-navigate-in-page', le);
+          log('MULTI hash changes during extra quick-nav → ' + JSON.stringify(seen));
+          await st('extra quick-nav #quest');
+          log('MULTI currentUrl from extra sidebar: ' + await side(ex, `gbf.nav.currentUrl()`));
+          ex.sideView.webContents.focus();
+          for (const type of ['keyDown', 'keyUp']) ex.sideView.webContents.sendInputEvent({ type, keyCode: 'B', modifiers: ['control'] });
+          await sleep(400); await st('Ctrl+B in extra sidebar');
+          sendSide('ping', 123); await sleep(200);
+          log('MULTI broadcast ping → main=' + await side(mainShell, `document.querySelector('#ping-ms').textContent`) + ' extra=' + await side(ex, `document.querySelector('#ping-ms').textContent`));
+          await side(ex, `document.querySelector('#btn-rec').click(); true`); await sleep(2500);
+          log(`MULTI rec from extra: active=${rec.active} targetIsExtra=${rec.target === ex.gameView.webContents} targetIsMain=${rec.target === mainShell.gameView.webContents}`);
+          stopRecording(); await sleep(2500);
+          log(`MULTI rec stopped: active=${rec.active} file=${path.basename(rec.file || '')} size=${rec.file && fs.existsSync(rec.file) ? fs.statSync(rec.file).size : 0}`);
+          const exSide = ex.sideView.webContents, exGame = ex.gameView.webContents, exId = ex.gameWcId;
+          w2.close(); await sleep(800);
+          log(`MULTI after close: shells=${shells.size} sideDestroyed=${exSide.isDestroyed()} gameDestroyed=${exGame.isDestroyed()} idStillWatched=${gameContentsIds.has(exId)} gameWindows=${gameWindows.length}`);
+          await side(mainShell, `document.querySelector('#btn-hide').click(); true`); await sleep(400);
+          log(`MULTI main still toggles: side=${mainShell.sideView.getBounds().width} saved=${store.load().sidebarVisible}`);
+          await side(mainShell, `document.querySelector('#rail-expand').click(); true`); await sleep(400);
+          log(`MULTI main restored: side=${mainShell.sideView.getBounds().width} saved=${store.load().sidebarVisible}`);
         }
         if (process.env.GBF_DEBUG_UPDATER) {
           // Drives the in-client Updates UI against the LIVE GitHub Releases feed. autoDownload off:
